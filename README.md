@@ -1,128 +1,93 @@
-# Machine Learning Engineering Open Book
+# 《机器学习工程》开放书籍
 
-This is an open collection of methodologies, tools and step by step instructions to help with successful training of large language models and multi-modal models.
+这本著作是一份有关大型语言模型和多模式模型训练方法的综合性资料汇编，涵盖了理论框架、工具使用以及详细的步骤指引。
 
-This is a technical material suitable for LLM/VLM training engineers and operators. That is the content here contains lots of scripts and copy-n-paste commands to enable you to quickly address your needs.
+这些资料专为大型语言模型（LLM）和视觉语言模型（VLM）培训工程师和管理员设计，包含了大量的脚本文档和可以直接复制的命令行示例，旨在帮助读者快速解决问题。
 
-This repo is an ongoing brain dump of my experiences training Large Language Models (LLM) (and VLMs); a lot of the know-how I acquired while training the open-source [BLOOM-176B](https://huggingface.co/bigscience/bloom) model in 2022 and [IDEFICS-80B](https://huggingface.co/HuggingFaceM4/idefics-80b-instruct) multi-modal model in 2023. Currently, I'm working on developing/training open-source Retrieval Augmented Generation (RAG) models at [Contextual.AI](https://contextual.ai/).
+该存储库汇集了我多年来在开源大型语言模型（例如2022年的[BLOOM-176B](https://huggingface.co/bigscience/bloom)）和多模式模型（例如2023年的[IDEFICS-80B](https://huggingface.co/HuggingFaceM4/idefics-80b-instruct)）的训练过程中积累的专业知识和经验。目前，我正任职于[Contextual.AI](https://contextual.ai/)，专注于开发和训练开源的基于检索增强生成的（RAG）模型。
 
-I've been compiling this information mostly for myself so that I could quickly find solutions I have already researched in the past and which have worked, but as usual I'm happy to share these with the wider ML community.
+我将这些信息汇总在一起的主要目的是方便自己在需要时可以快速查找解决方案，但我也非常愿意与更广阔的机器学习社区分享这些内容。
 
+## 目录
 
-## Table of Contents
+如果发现页面布局不稳，这可能是因为我一直在不断地新增章节并逐步优化内容的结构，使之更为清晰易懂。敬请理解！
 
-My apologies if the layout is a bit unstable while I'm writing new chapters and gradually re-organizing the content to be more intuitive.
+### 第一部分：洞见
 
-**Part 1. Insights**
+1. **[人工智能战场工程](./insights/ai-battlefield.md)** - 在这一领域的成功所需的知识
 
-1. **[The AI Battlefield Engineering](./insights/ai-battlefield.md)** - what you need to know in order to succeed
+### 第二部分：硬件
 
-**Part 2. Hardware**
+1. **[计算资源](compute)** - GPU、CPU 和 CPU 内存。
 
-1. **[Compute](compute)** - accelerators, CPUs, CPU memory.
+1. **[存储系统](storage)** - 本地、分布式和共享文件系统。
 
-1. **[Storage](storage)** - local, distributed and shared file systems.
+1. **[网络](network)** - 节点内部和节点之间的网络连接。
 
-1. **[Network](network)** - intra- and inter-node networking.
+### 第三部分：调度
 
+1. **[SLURM](orchestration/slurm)** - 主要的管理系统。
 
-**Part 3. Orchestration**
+### 第四部分：训练
 
-1. **[SLURM](orchestration/slurm)** - the main orchestration environment
+1. **[训练指南](training)** - 与模型训练相关的指南。
 
+### 第五部分：开发
 
-**Part 4. Training**
+1. **[调试与排错](debug)** - 如何轻松处理简单的或复杂的调试问题。
 
-1. **[Training](training)** - model training related guides
+1. **[更多的调试技巧](https://github.com/stas00/the-art-of-debugging)**
 
+1. **[测试](testing)** - 许多提示和工具，使编写测试变得愉悦。
 
-**Part 5. Development**
+### 第六部分：其他
 
-1. **[Debugging and Troubleshooting](debug)** - how to debug easy and difficult issues
+1. **[资源链接](resources)** - LLM/VLM的历史记录。
 
-1. **[And more debugging](https://github.com/stas00/the-art-of-debugging)**
+## 更新通知
 
-1. **[Testing](testing)** - numerous tips and tools to make test writing enjoyable
+任何重大更新的公告都会在我的Twitter频道上公布：[@StasBekman](https://twitter.com/StasBekman)。
 
+## PDF版本
 
-**Part 6. Miscellaneous**
+下载本书的[PDF](https://huggingface.co/stas/ml-engineering-book/resolve/main/Stas%20Bekman%20-%20Machine%20Learning%20Engineering.pdf?download=true)版本。
 
-1. **[Resources](resources)** - LLM/VLM chronicles
+我会尽量保持每周更新一次，但如果想要最新版本，你也可以按照[此处](build)的说明自行编译。
 
+感谢Hugging Face允许我在其平台上托管此书的PDF版本。
 
-## Updates
+## 讨论区
 
-I announce any significant updates on my twitter channel [https://twitter.com/StasBekman](https://twitter.com/StasBekman).
+如果你想在机器学习工程的任何方面展开讨论，可以在本仓库的[社区讨论板块](https://github.com/stas00/ml-engineering/discussions)中发起新的话题或者加入已有的讨论。我们鼓励大家分享经验和相互学习！
 
-## PDF version
+## 快速链接
 
-Download the [PDF](https://huggingface.co/stas/ml-engineering-book/resolve/main/Stas%20Bekman%20-%20Machine%20Learning%20Engineering.pdf?download=true) version of the book.
+以下是一些你可能频繁访问的资源的直接链接：
 
-I will try to rebuild it once a week or so, but if you want the latest, the instructions for building are [here](build).
+### 工具类
 
-Thanks to HuggingFace for giving me permission to host my book's PDF at the [HF hub](https://huggingface.co/).
+- [all_reduce_bench.py](network/benchmarks/all_reduce_bench.py) - 一个比 `nccl-tests` 更易于使用的网络吞吐量基准测试工具。
+- [torch-distributed-gpu-test.py](debug/torch-distributed-gpu-test.py) - 一个用于快速测试节点之间连接的工具。
 
-## Discussions
+### 指南类
 
-If you want to discuss something related to ML engineering this repo has the [community discussions](https://github.com/stas00/ml-engineering/discussions) available - so please don't hesitate to share your experience or start a new discussion about something you're passionate about.
+- [debugging pytorch applications](debug/pytorch.md) - 快速修复 PyTorch 应用程序崩溃或冻结的有效技巧。
+- [slurm for users](orchestration/slurm/users.md) - SLURM 用户指南和小贴士。
+- [make tiny models/datasets/tokenizers](debug/make-tiny-models-tokenizers-datasets.md) - 制作微型模型的指南。
+- [LLM/VLM chronicles collection](resources#publicly-available-training-llmvlm-logbooks) - 公开可用的 LLM/VLM 训练日志精选。
 
+## 鸣谢
 
+如果没有过去委托给我的一些大规模模型训练项目，我不会有今天这样的成就。这种特权只属于少数人，因为租赁庞大的 ML 计算集群成本极为高昂。我希望他人可以通过阅读这些笔记来间接学习我的经验教训。
 
-## Shortcuts
+特别感谢[Thomas Wolf](https://github.com/thomwolf)，是他建议我领导 BLOOM-176B 的训练工作，尽管当时我对大规模训练几乎一无所知。正是那个项目点燃了我深入探索的热情。当然，也要感谢 Hugging Face 给了我机会全职投入到 BLOOM-176B 和后来的 IDEFCIS-80B 项目的训练工作中去。
 
-Things that you are likely to need to find quickly and often.
+我将这些信息汇总在一起的主要目的是为了让自己在需要时可以快速找到解决方案，但我很高兴也很愿意与更广泛的机器学习社区分享这些内容。
 
-Tools:
+## 贡献
 
-- [all_reduce_bench.py](network/benchmarks/all_reduce_bench.py) - a much easier way to benchmark network throughput than nccl-tests.
-- [torch-distributed-gpu-test.py](debug/torch-distributed-gpu-test.py) - a tool to quickly test your inter-node connectivity
+如果您发现任何错误、拼写错误或者其他需要改进之处，请毫不犹豫地通过提交[问题报告](https://github.com/stas00/ml-engineering/issues)或者直接提交[拉取请求](https://github.com/stas00/ml-engineering/pulls)的方式帮助我们改善这份文档。
 
-Guides:
+## 许可证
 
-- [debugging pytorch applications](debug/pytorch.md) - quick copy-n-paste solutions to resolve hanging or breaking pytorch applications
-- [slurm for users](orchestration/slurm/users.md) - a slurm cheatsheet and tricks
-- [make tiny models/datasets/tokenizers](debug/make-tiny-models-tokenizers-datasets.md)
-- [LLM/VLM chronicles collection](resources#publicly-available-training-llmvlm-logbooks)
-
-
-## Gratitude
-
-None of this would have been possible without me being entrusted with doing the specific LLM/VLM trainings I have learned this know-how from. This is a privilege that only a few enjoy due to the prohibitively expensive cost of renting huge ML compute clusters. So hopefully the rest of the ML community will vicariously learn from these notes.
-
-Special thanks go to [Thom Wolf](https://github.com/thomwolf) who proposed that I lead the BLOOM-176B training back when I didn't know anything about large scale training. This was the project that catapulted me into the intense learning process. And, of course, HuggingFace for giving me the opportunity to work full time on BLOOM-176B and later on IDEFICS-80B trainings.
-
-## Contributing
-
-If you found a bug, typo or would like to propose an improvement please don't hesitate to open an [Issue](https://github.com/stas00/ml-engineering/issues) or contribute a PR.
-
-
-## License
-
-The content of this site is distributed under [Attribution-ShareAlike 4.0 International](LICENSE-CC-BY-SA).
-
-
-
-
-
-## My repositories map
-
-✔ **Machine Learning:**
- [ML Engineering Open Book](https://github.com/stas00/ml-engineering) |
- [ML ways](https://github.com/stas00/ml-ways) |
- [Porting](https://github.com/stas00/porting)
-
-✔ **Guides:**
- [The Art of Debugging](https://github.com/stas00/the-art-of-debugging)
-
-✔ **Applications:**
- [ipyexperiments](https://github.com/stas00/ipyexperiments)
-
-✔ **Tools and Cheatsheets:**
- [bash](https://github.com/stas00/bash-tools) |
- [conda](https://github.com/stas00/conda-tools) |
- [git](https://github.com/stas00/git-tools) |
- [jupyter-notebook](https://github.com/stas00/jupyter-notebook-tools) |
- [make](https://github.com/stas00/make-tools) |
- [python](https://github.com/stas00/python-tools) |
- [tensorboard](https://github.com/stas00/tensorboard-tools) |
- [unix](https://github.com/stas00/unix-tools)
+本网站内容遵循[知识共享署名-相同方式共享 4.0 国际许可协议](LICENSE-CC-BY-SA)。

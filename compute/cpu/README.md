@@ -1,37 +1,39 @@
 # CPU
 
-XXX: This chapter needs a lot more work
+本章需要大量工作
 
-## How many cpu cores do you need
+## 你需要的CPU核心数是多少？
 
-Per 1 gpu you need:
+每张GPU你需要：
 
-1. 1 cpu core per process that is tied to the gpu
-2. 1 cpu core for each DataLoader worker process - and you need 2-4 workers.
+1. 每个与GPU绑定的进程都需要一个CPU核心。
+2. 每个DataLoader的worker进程也需要一个CPU核心，通常你至少需要2到4个这样的worker。
 
-2 workers is usually plenty for NLP, especially if the data is preprocessed
+对于NLP任务来说，通常两个worker就足够了，特别是如果数据已经被预处理过的话。
 
-If you need to do dynamic transforms, which is often the case with computer vision models, you may need 3-4 and sometimes more workers.
+如果你需要在计算机视觉模型中执行动态转换（这种情况很常见），你可能需要3到4个甚至更多的worker。
 
-The goal is to be able to pull from the DataLoader instantly, and not block the GPU's compute, which means that you need to pre-process a bunch of samples for the next iteration, while the current iteration is running. In other words your next batch needs to take no longer than a single iteration GPU compute of the batch of the same size.
+目标是在不阻塞GPU计算的情况下能够立即从DataLoader获取数据，这意味着在当前迭代运行的同时，你需要为下一个迭代预先处理大量的样本。换句话说，你的下一批数据的准备时间不应该比相同大小的批次的一次迭代GPU计算的时间更长。
 
-Besides preprocessing if you're pulling dynamically from the cloud instead of local storage you also need to make sure that the data is pre-fetched fast enough to feed the workers that feed the gpu furnace.
+除了预处理之外，如果你的数据是从云端而不是本地存储拉取的，那么你还必须确保数据被快速地预取以喂给那些喂给GPU这个“熔炉”的工人。
 
-Multiply that by the number of GPUs, add a few cores for the Operation system (let's say 4).
+将上述需求乘以GPU的数量，再加上操作系统所需的几颗核心（比如说4个）。
 
-If the node has 8 gpus, and you have n_workers, then you need `8*(num_workers+1)+4`. If you're doing NLP, it'd be usually about 2 workers per gpu, so `8*(2+1)+4` => 28 cpu cores. If you do CV training, and, say, you need 4 workers per gpu, then it'd be `8(4+1)+4` => 44 cpu cores.
+如果一台节点有8块GPU，你有n个工作者，那么你需要的是 `8 * (num_workers + 1) + 4` 个核心。如果是做NLP的任务，通常每个GPU大约会有2个工作者，所以就是 `8 * (2 + 1) + 4` 等于28个CPU核心。如果是进行CV训练，假设你需要每个GPU上有4个工作者，那就是 `8 * (4 + 1) + 4` 等于44个CPU核心。
 
-What happens if you have more very active processes than the total number of cpu cores? Some processes will get preempted (put in the queue for when cpu cores become available) and you absolutely want to avoid any context switching.
+如果活跃进程的总数超过了可用的总CPU核心数量会发生什么？一些进程会被抢占（放入队列等待CPU资源可用时再继续执行），而你绝对不想有任何上下文切换的情况发生。
 
-But modern cloud offerings typically have 48+ cpu-cores so usually there is no problem to have enough cores to go around.
+但是现代云服务通常提供48个以上的CPU核心，因此通常不会有核心不足的问题。
 
-### CPU offload
+### CPU卸载
 
-Some frameworks, like [Deepspeed](https://www.deepspeed.ai/tutorials/zero-offload/) can offload some compute work to CPU without creating an bottleneck. In which case you'd want additional cpu-cores.
+有些框架，比如[DeepSpeed](https://www.deepspeed.ai/tutorials/zero-offload/)可以将在CPU上执行的部分计算负载卸载掉，在这种情况下你会想要额外的CPU核心来支持这些操作。
 
 
-## Hyperthreads
+## 超线程
 
-Doubles the cpu cores number
+可以将CPU核心的数量加倍
 
 XXX:
+
+翻译结束。

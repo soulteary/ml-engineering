@@ -1,18 +1,18 @@
-# CPU memory
+# CPU 内存
 
-This is a tiny chapter, since usually there are very few nuances one needs to know about CPU memory - which is a good thing!
+这是一个很小的章节，因为通常关于CPU内存需要了解的细微差别非常少——这是一件好事！
 
-Most of the ML workload compute happens on GPUs, but typically there should be at least as much CPU memory on each node as there is on the GPUs. So, for example, if you're on a H100 node with 8x 80GB GPUs, you have 640GB of GPU memory. Thus you want at least as much of CPU memory. But most recent high end cloud packages usually come with 1-2TBs of CPU memory.
+大多数ML工作负载的计算发生在GPU上，但通常每个节点上的CPU内存至少应该与GPU上的相同。例如，如果您在具有8个80GB GPU的H100节点上，您有640GB的GPU内存。因此，您希望至少拥有同样多的CPU内存。但是，大多数最新的高端云套餐通常配备了1-2TB的CPU内存。
 
-## What CPU memory is needed for in ML workloads
+## 在ML工作负载中需要的CPU内存
 
-- Loading the model weights, unless they are loaded directly onto the GPUs - this is usually a transitory memory usage that goes back to zero once the model has been moved to GPUs.
-- Saving the model weights. In some situations each GPU writes its own checkpoint directly to the disk, in other cases the model is recomposed on the CPU before it's written to disk - this too is a transitory memory usage.
-- Possible parameter and optimizer state offloading when using frameworks like  [Deepspeed](https://www.deepspeed.ai/tutorials/zero-offload/). In which case quite a lot of CPU memory might be needed.
-- Activations calculated in the `forward` pass, and which need to be available for the `backward` path can also be offloaded to CPU, rather than discarded and then recomputed during the backward pass to save the unnecessary overhead
-- `DataLoader` is usually one of the main users of CPU memory and at times it may consume very large amounts of memory. Typically there are at least 2x 8 DL workers running on each node, so you need enough memory to support at least 16 processes each holding some data. For example, in the case of streaming data from the cloud, if the data shards are large, these processes could easily eat up hundreds of GBs of CPU memory.
-- The software itself and its dependent libraries uses a bit of CPU memory, but this amount is usually negligible.
+- 加载模型权重，除非它们直接加载到GPU上 – 这通常是暂时的内存使用，一旦模型移动到GPU上就会回到零。
+- 将模型权重保存到磁盘 – 在某些情况下，每个GPU都会直接将其检查点写入磁盘，而在其他情况下，模型会在写入磁盘之前在CPU上重新组合 – 这也是一种临时内存使用。
+- 如果使用像[DeepSpeed](https://www.deepspeed.ai/tutorials/zero-offload/)这样的框架时可能发生的参数和优化器状态卸载。在这种情况下，大量的CPU内存可能会被需要。
+- 在正向传播期间计算的激活也需要保留以备反向传播路径使用，这些也可以卸载到CPU而不是丢弃并在反向传递中重新计算以节省不必要的开销。
+- `DataLoader`通常是CPU内存的主要用户之一，有时它可能会消耗非常大的内存量。典型地，每个节点上有至少2x 8个深度学习工作者进程运行，所以你需要足够的记忆体来支持至少16个进程中的每一个持有一些数据。例如，如果数据来自云端并且是流式的，那么这些过程很容易吞噬数百GB的CPU内存。
+- 软件本身及其依赖库会占用一点CPU内存，但这通常是微不足道的。
 
-## Things to know
+## 要知道的事情
 
-- If the `DataLoader` uses HF `datasets` in `mmap` mode the Resident memory usage may appear to be using a huge amount of CPU memory as it'll try to map out the whole datasets to the memory. Except this is misleading, since if the memory is needed elsewhere the OS will page out any unneeded mmap'ed pages back to the system. You can read more about it [here](https://stasosphere.com/entrepreneur-being/301-mmap-memory-leak-investigation/). This awareness, of course, applies to any dataset using `mmap`, I was using HF `datasets` as an example since it's very widely used.
+- 如果`DataLoader`使用HF `datasets`并且在`mmap`模式下，驻留的内存使用量可能会显示为使用了大量CPU内存，因为它将尝试将整个数据集映射到内存中。除了这可能是一个误导之外，因为如果内存被其他地方需要，操作系统会将任何不需要的mmap页面回写到系统中。你可以在这里阅读更多关于它的信息：[这里](https://stasosphere.com/entrepreneur-being/301-mmap-memory-leak-investigation/)。当然，这种意识也适用于任何使用`mmap`的数据集，我使用HF `datasets`作为例子是因为它们被广泛使用。

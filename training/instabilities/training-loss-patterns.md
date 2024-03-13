@@ -1,169 +1,150 @@
-# Understanding Training Loss Patterns
+# 对训练损失模式的理解
 
-Training loss plot is similar to the heart beat pattern - there is the good, the bad and you-should-worry one. After studying many training loss trajectories one develops an intuition to explain various loss behaviors during one's training and how to act on those.
+训练损失图类似于心电图，有良好、不良和需要担忧的情况。通过对许多训练损失轨迹的研究，人们可以发展出一种直觉来解释训练过程中出现的各种损失行为以及如何应对这些情况。
 
-I warn you that the "Understanding" in the title of this section is overloaded since very often we don't really understand why certain types of spikes happen. Here "understanding" refers to recognizing various patterns. We then usually have techniques to overcome the bad patterns and bring the training successfully to the finish line.
+在标题中的“理解”一词中存在一定的误导性，因为很多时候我们并不真正了解为什么会发生某些类型的尖峰。这里的“理解”指的是识别不同的模式。然后，通常我们有技术手段来解决不好的模式并成功地将培训带到终点线。
 
-Thus you will find here a gallery of training loss patterns sometimes with real explanations, but more often than not educated guesses to what might be happening.
+因此，您将在这里找到一个训练损失模式的画廊，有时带有真正的解释，但更多时候是关于可能发生的事情的有根据的猜测。
 
-Please excuse the plot snapshots looking wildly different from each other as they have come from many sources over multiple years.
+请原谅这些快照看起来彼此之间差异很大，它们来自多个来源并在多年内收集。
 
-## The good, the bad and the unexpected
+## 好的、坏的和不寻常的
 
-Let's look at some good, bad and unusual patterns.
+让我们看看一些好、坏和不寻常的模式。
 
-### A very failed training
+### 非常失败的训练
 
-Prior to starting BLOOM-176B training we did multiple experiments with the [104B model](https://github.com/bigscience-workshop/bigscience/tree/master/train/tr8-104B-wide). We failed to figure out how to not diverge very early on.
+在开始BLOOM-176B训练之前，我们对[104B模型](https://github.com/bigscience-workshop/bigscience/tree/master/train/tr8-104B-wide)进行了多次实验。我们无法弄清楚如何在早期不发散。
 
 ![](images/pre-bloom-104B-en-fail.png)
 
-As you can see many attempts were made, many techniques were applied (see [chronicles](https://github.com/bigscience-workshop/bigscience/blob/master/train/tr8-104B-wide/chronicles.md). We think the 2 main obstacles were using fp16 and data that had a lot of garbage in it. For BLOOM-176B we switched to bf16, used much cleaner data and also added an embedding layer-norm and that made all the difference.
+如您所见，尝试了很多次，应用了许多技术（参见[编年史](https://github.com/bigscience-workshop/bigscience/blob/master/train/tr8-104B-wide/chronicles.md)）。我们认为导致失败的两个主要障碍是使用fp16和数据中有大量垃圾。对于BLOOM-176B，我们切换到bf16，使用了更干净的数据，还添加了嵌入层归一化，这使得所有区别。
 
-
-### An almost perfect training
+### 几乎完美的训练
 
 ![](images/bloom-176B-success.png)
 
-The [BLOOM-176B](https://github.com/bigscience-workshop/bigscience/tree/master/train/tr11-176B-ml) training had a close to perfect training loss trajectory, with a single spike that has recovered in 200 steps.
+[BLOOM-176B](https://github.com/bigscience-workshop/bigscience/tree/master/train/tr11-176B-ml)的训练具有近乎完美的训练损失轨迹，只有一个尖峰在200步后恢复。
 
-You can inspect the [TB](https://huggingface.co/bigscience/tr11-176B-logs/tensorboard) to zoom in and check other plots.
+您可以检查[TB](https://huggingface.co/bigscience/tr11-176B-logs/tensorboard)以放大并查看其他图表。
 
-This was the almost perfect training indeed. Lots of hard work was put into achieving this.
+这是一次接近完美的训练，确实投入了大量艰苦的工作来实现这一点。
 
+### “顿悟”时刻
 
-### The grokking moment
-
-Recently I was doing some performance testing and run a tiny global batch size of 8 on 8x A100 nodes on llama-2-7b trained from scratch. (w/ Deepspeed ZeRO-3 DP using HF Transformers [Llama](https://github.com/huggingface/transformers/tree/main/src/transformers/models/llama) implementation)
+最近，我在进行一些性能测试时，在一个包含8个A100节点的集群上用全球批量为8对从零开始的llama-2-7b进行了微小的批量训练。（使用DeepSpeed ZeRO-3 DP与HF Transformers[Llama](https://github.com/huggingface/transformers/tree/main/src/transformers/models/llama)实现）
 
 ![](images/llama-7b-grokking-no-zoom.png)
 
-Here one can observe a rapid loss improvement from 4 to 2.5 in just 480 samples after a very steady much slower improvements. My colleague [Gautam Mittal](https://github.com/gmittal) called it the [grokking](https://en.wikipedia.org/wiki/Grok) moment. In just a handful of steps the model suddenly generalized to much better predict the masked tokens.
+这里可以看到掩码令牌预测的快速损失改进，从大约4到2.5仅在480个样本之后，在经历了非常稳定的缓慢改进之后。我的同事[Gautam Mittal](https://github.com/gmittal)称之为“顿悟”（[Grokking](https://en.wikipedia.org/wiki/Grok)）的时刻。仅仅几十个步骤，模型突然普遍化为更好地预测掩码令牌。
 
-Normally one doesn't see such a dramatic improvement when using a much larger batch size.
+正常情况下，当使用较大的批次大小时，不会看到如此戏剧性的改进。
 
-If we zoom in it took about 60 8-sample per iteration steps:
+如果放大，它在大约60个每迭代8个样品的步骤内发生了：
 
 ![](images/llama-7b-grokking.png)
 
+## 主要的损失尖峰类型
 
+一般来说，有三种类型的损失尖峰：
 
+1. 快速恢复的尖峰
+2. 慢速恢复的尖峰
+3. 不完全恢复的尖峰
 
-## Main types of loss spikes
+尖峰通常是由于数据口袋问题引起的，要么是因为数据没有正确地随机洗牌，要么是因为数据中没有清理掉网站上的垃圾内容。
 
-In general there are 3 types of loss spikes:
+虽然人们可能会怀疑触发尖峰的是前一批数据，但如果仔细研究那批数据的內容，很可能是找不到任何异常——这种情况往往是在很多步骤之前就开始出现问题，然后在最不经意的时候发生。此外，要研究这个批次的内容可能不容易，因为在大型全局批量和序列长度非常大的情况下，这个问题可能相当于一本书的大小。
 
-1. Fast recovering spikes
-2. Slow recovering spikes
-3. Not fully recovering spikes
+### 快速恢复的尖峰
 
-The spikes usually happen because of a bad data pocket, either due to badly shuffled data or because it hasn't been cleaned from some garbage scraped from the websites.
+损失尖峰可以经常发生，只要它们迅速反弹回到离开的地方，训练通常会继续就像什么都没发生过一样：
 
-While one would suspect that the batch before the spike was the trigger, but if you were to study that batch's contents you are likely to find nothing unusual - quite often the problem starts developing many steps before and then most of the sudden it happens. But also it might not be easy to study the batch, since it could amount to a size of a book when the global batch size and the sequence lengths are huge.
-
-
-### Fast recovering spikes
-
-Loss spikes can happen often and as long as they quickly bounce back to where they left off the training usually continues as if nothing happened:
-
-Here is an example of [the 13B pre-BLOOM training experiment](https://github.com/bigscience-workshop/bigscience/tree/master/train/tr1-13B-base):
+这是一个来自[pre-BLOOM 13B训练实验](https://github.com/bigscience-workshop/bigscience/tree/master/train/tr1-13B-base)的例子：
 
 ![](images/pre-bloom-tr1-13B-glitch-1-2.png)
 
-As you can see there are many spikes, some of a huge magnitude but they have all quickly recovered.
+正如你所看到的，有很多尖峰，其中一些幅度非常大，但是它们都很快恢复了。
 
+### 慢速恢复的尖峰
 
-### Slow recovering spikes
-
-Here is a slow recovering spike from the [IDEFICS-80B](https://github.com/huggingface/m4-logs/blob/master/tr-190-80b/chronicles.md) training:
+下面是一个来自[IDEFCIS-80B](https://github.com/huggingface/m4-logs/blob/master/tr-190-80b/chronicles.md)训练的慢速恢复尖峰示例：
 
 ![](images/idefics-80b-tr-190-01-spike-recover-2023-05-30.png)
 
+### 不完全恢复的尖峰
 
-
-### Not fully recovering spikes
-
-
-This [104B model attempt](https://github.com/bigscience-workshop/bigscience/tree/master/train/tr8-104B-wide) spiked, started recovering but decided to not recover fully and instead started diverging
+以下是从[pre-BLOOM 104B模型尝试](https://github.com/bigscience-workshop/bigscience/tree/master/train/tr8-104B-wide)的不完全恢复尖峰的一个例子：
 
 ![](images/pre-bloom-tr8-104B-glitch-1.png)
 
-Here is another example from the [IDEFICS-80B](https://github.com/huggingface/m4-logs/blob/master/tr-190-80b/chronicles.md) training:
+在这里，你可以看到尖峰发生后，损失开始恢复，但它决定不完全恢复，而是开始发散。
 
-![](images/idefics-80b-tr-190-01-spike-2023-05-27.png)
+### 非尖峰的发散
 
-
-### Non-spike diverging
-
-Here are a few examples of diverging that didn't go through a spike
+以下是几个没有通过尖峰就发散的例子：
 
 ![](images/pre-bloom-tr8-104B-glitch-5.png)
 
-and here are a few more:
+还有更多的例子：
 
 ![](images/pre-bloom-tr8-104B-glitch-7-10.png)
 
-as you can see each restart makes a bit of progress and then the model diverges.
+每次重启都会取得一点进展，然后模型就会发散。
 
-All these are from the [104B model attempts](https://github.com/bigscience-workshop/bigscience/tree/master/train/tr8-104B-wide).
+这些都是来自[pre-BLOOM 104B模型尝试](https://github.com/bigscience-workshop/bigscience/tree/master/train/tr8-104B-wide)。
 
+### 与多数据集相关的尖峰
 
-### Multiple datasets spikes
-
-During the [IDEFICS-80B](https://github.com/huggingface/m4-logs/blob/master/tr-190-80b/chronicles.md) training we were using 2 different dataset types mixed together:
+在[IDEFCIS-80B](https://github.com/huggingface/m4-logs/blob/master/tr-190-80b/chronicles.md)训练期间，我们使用了两种不同类型的混合数据集：
 
 ![](images/idefics-80b-tr-190-01-losses-2023-06-04.png)
 
-Legend: cm4 (high), average (mid) and pmd (low)
+图例：cm4（高）、平均（中）和pmd（低）
 
-You can see that the loss spikes were sometimes happening simultaneously on both datasets and at other times only one of the datasets loss would spike.
+你可以看到损失尖峰有时同时发生在两个数据集上，而在其他时候只有其中一个数据集的损失会尖峰。
 
-Here the model was learning two different data distributions and as you can see it was not reporting the same loss and the spike behaviors on both data distributions. The pmd datasets loss was much easier for the model than the cm4 one.
+这里模型在学习两种不同的数据分布，正如你看到的，它在两者上报告的损失不同，并且尖峰行为也不同。PMD数据集的损失对模型来说比CM4的要容易得多。
 
+## 与恢复训练相关的尖峰
 
-## Resume-related spikes
+由于硬件崩溃或出于需要回滚到较早检查点的原因而导致的训练中断几乎是不可避免的。如果你的训练软件不能完美地处理恢复以至于模型没有注意到曾经发生过中断，那么可能会遇到各种各样的问题。
 
-Training resume due to a hardware crash or because a need to rollback to an earlier checkpoint due to encountering a divergence is pretty much guaranteed to happen. If your training software doesn't resume perfectly so that the model doesn't notice there was a resume various problems could be encountered.
+重新启动的最复杂的挑战之一是恢复各种RNG状态，恢复DataLoader索引到上次训练停止的位置，以及处理如果你使用复杂DataLoaders时的特定需求。
 
-The most complicated challenge of resume is restoring various RNGs, getting to the DataLoader index where the previous training was restored, and dealing with various other requirements if you use complex DataLoaders that are specific to your setup.
+### 与DataSampler相关的问题
 
-
-### DataSampler related issues
-
-During [IDEFICS-80B](https://github.com/huggingface/m4-logs/blob/master/tr-190-80b/chronicles.md) training we had a very complicated DataLoader which was suffering from image to text ratio fluctuations when the DataLoader was getting restored on resume, so we ended up having a small spike on each resume which would then recover:
+在[IDEFCIS-80B](https://github.com/huggingface/m4-logs/blob/master/tr-190-80b/chronicles.md)训练期间，我们的DataLoader非常复杂，并且在恢复时图像到文本比率波动会导致损失出现小尖峰，所以我们最终在每次恢复时都有一个小尖峰，然后恢复：
 
 ![](images/idefics-80b-tr-190-01-image2text.png)
 
-You can see the loss and ratio plots correlation here. As we had to resume about a dozen times we saw a lot of those spikes.
+你可以看到损失和比例图的相关性在这里。因为我们不得不多次恢复，所以我们在训练过程中看到了很多这样的尖峰。
 
+### 重复数据的影响
 
-
-
-
-### Impacts of repeat data
-
-I was training a variation of Llama2 and saw this super unusual spike that didn't diverge or recover but which switched to a new higher loss level:
+我正在训练Llama2的一个变体，并遇到了这种超级不寻常的尖峰，它既没有发散也没有恢复，而是切换到了一个新的更高损失的级别：
 
 ![](images/ptl-repeat-data-p1.png)
 
-I rolled back to just before the weird behavior occurred and restarted. The loss training progressed at the same loss level for a bit and then again spiked and shifted to a higher loss.
+我将时间倒退到奇怪的行为发生之前并重新开始。损失训练在前一段相同的损失水平下进行了一段时间，然后再次尖峰并转移到更高的损失。
 
 ![](images/ptl-repeat-data-p2.png)
 
-I have never seen this type of divergence before. I was scratching my head for a while and then decided to look at the bigger picture.
+我以前从未见过这种类型的发散。我花了一些时间思考，然后决定看更大的画面。
 
-As of this writing [Wandb](https://wandb.ai/) doesn't handle resume data plotting correctly if a rollback was performed, that is it ignores all new data after the rollback until the steps of the old data have been overcome. This forces us to start a new wandb plot for every resume with a rollback so that new data is shown. And if you needs to see the whole plot you have to stitch them and which includes dead data points that are no longer true. So I did the stitching and saw this puzzle:
+截至本文撰写之时，[Wandb](https://wandb.ai/)在处理带有一个或多个恢复数据的图标方面做得不是很好，它会忽略恢复后的新数据直到超过旧数据的步骤数为止。这迫使我们在每个带有rollback的恢复时创建一个新的wandb图，以便显示新的数据。如果我们想查看整个图，我们需要拼接它们，其中包括不再准确的死数据点。所以我做了拼接工作并看到了这个谜题：
 
 ![](images/ptl-repeat-data-p3.png)
 
-There was no real spike in the two earlier runs. The loss never went up in the first place. In both resumes it was under-reporting loss due to an exactly repeated data and then it reached data it hasn't seen before and started reporting correctly. In other words it was overfitting and reporting a false loss.
+实际上并没有真正的尖峰出现在两次运行的前面。损失从来没有上升过。在两次恢复训练中，损失都没有被正确报告，因为它遇到了完全相同的数据，然后遇到了未见过的数据并开始了正确的报告。换句话说，它是过度拟合并报告了一个错误的损失。
 
-The cause of the problem is data repetition, and since it clearly memorised some of it it was reporting a better loss.
+问题的原因是数据重复，由于它显然记住了其中的一些数据，它可以报告更好的损失。
 
-The problem comes from [pytorch-lightning](https://github.com/lightning-ai/lightning) not handling resumes correctly wrt DataSampler automatically - basically every time you resume you start your data stream from scratch. This, of course, requires a user to somehow fix the situation. You could change the seed to somewhat ameliorate the situation and avoid the exact data sequence, but it still leaves you with repeat data, which isn't what you want for any serious training (or ablation experiments, since your observation will be invalid, if they assume [IID data distribution](https://en.wikipedia.org/wiki/Independent_and_identically_distributed_random_variables).
+该问题的原因在于[PyTorch Lightning](https://github.com/lightning-ai/lightning)没有正确处理恢复时的DataSampler自动操作——基本上每次你恢复时，你的数据流都将从头开始。当然，用户需要解决这个问题。你可以改变种子来缓解这种情况，避免完全相同的数据序列，但这仍然留下了重复的数据，这不是任何严肃的训练（或者消融实验，因为您的观察将是无效的，如果他们假设独立同分布的数据）所需要的。
 
-footnote: I discussed [this issue with the PTL developers](https://github.com/Lightning-AI/lightning/issues/18780) and they said that they tried hard to come up with a generic solution but it wasn't meant to be. So the user needs to figure it out.
+脚注：我与PTL开发者讨论了这个[问题](https://github.com/Lightning-AI/lightning/issues/18780)，他们说他们努力寻找一个通用的解决方案，但没有成功。因此，用户需要自己解决问题。
 
-Make sure to check your training framework documentation whether it handles the DataSampler resuming correctly. Make sure you didn't discover this problem after the training has finished and you ended up training 6x times the same 50B of tokens from the planned 300B tokens seen only once each.
+确保检查您的训练框架文档是否正确处理DataSampler的恢复。确保你没有在训练完成后再发现这个问题，因为你最终可能在计划看到的300B个token中只看过一次的情况下训练了6倍多的50B个token。
 
-Doing a couple of resumes early on before embarking on the real training should also expose if there is a problem. Albeit, if the data gets reshuffled on each resume you are unlikely to see it. It'll only be seen if the seed is the same.
+在进行几次恢复训练之前，最好先进行一些早期的训练，这样就可以暴露潜在的问题。不过，如果每次恢复训练时数据都被重新混排，你可能就不会发现问题。只有在相同的种子下才会显现出来。
+

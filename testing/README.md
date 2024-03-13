@@ -1,231 +1,221 @@
-# Writing and Running Tests
+请将以下文本翻译成中文：
 
-Note: a part of this document refers to functionality provided by the included [testing_utils.py](testing_utils.py), the bulk of which I have developed while I worked at HuggingFace.
+# 编写和运行测试
 
-This document covers both `pytest` and `unittest` functionalities and shows how both can be used together.
+注意：本文件中的一部分内容引用了由Hugging Face提供的[testing_utils.py](testing_utils.py)中的功能，这些功能是我之前在Hugging Face工作时开发的。
+
+本文涵盖了使用`pytest`和`unittest`的功能，并展示了如何将两者结合在一起使用。
 
 
-## Running tests
+## 运行测试
 
-### Run all tests
+### 运行所有测试
 
 ```console
 pytest
 ```
-I use the following alias:
+我使用了以下的别名：
 ```bash
-alias pyt="pytest --disable-warnings --instafail -rA"
+alias pyt='pytest --disable-warnings --instafail -rA'
 ```
 
-which tells pytest to:
+这个别名告诉`pytest`执行以下操作：
 
-- disable warning
-- `--instafail` shows failures as they happen, and not at the end
-- `-rA` generates a short test summary info
+- 禁用警告
+- `--instafail` 在错误发生时立即显示失败信息，而不是等到最后才显示
+- `-rA` 生成一个简短的测试摘要信息
 
-it requires you to install:
+要使用此别名，你需要安装额外的依赖项：
 ```
 pip install pytest-instafail
 ```
 
 
-### Getting the list of all tests
+### 获取所有测试的列表
 
-Show all tests in the test suite:
+显示测试套件中的所有测试：
 
 ```bash
 pytest --collect-only -q
 ```
 
-Show all tests in a given test file:
+显示特定测试文件中的所有测试：
 
 ```bash
 pytest tests/test_optimization.py --collect-only -q
 ```
 
-I use the following alias:
+我使用的别名为：
 ```bash
-alias pytc="pytest --disable-warnings --collect-only -q"
+alias pytc='pytest --disable-warnings --collect-only -q'
 ```
 
-### Run a specific test module
+### 运行特定的测试模块
 
-To run an individual test module:
+要运行单个测试模块：
 
 ```bash
 pytest tests/utils/test_logging.py
 ```
 
-### Run specific tests
+### 运行特定的测试
 
-If `unittest` is used, to run specific subtests you need to know the name of the `unittest`
-class containing those tests. For example, it could be:
+如果使用的是`unittest`，要运行特定的子测试，你需要知道包含那些测试的`unittest`类的名称。例如，它可能是这样的：
 
 ```bash
 pytest tests/test_optimization.py::OptimizationTest::test_adam_w
 ```
 
-Here:
+在这里：
 
-- `tests/test_optimization.py` - the file with tests
-- `OptimizationTest` - the name of the test class
-- `test_adam_w` - the name of the specific test function
+- `tests/test_optimization.py` 是包含测试的文件
+- `OptimizationTest` 是包含所需测试函数的类名称
+- `test_adam_w` 是具体需要执行的测试函数名称
 
-If the file contains multiple classes, you can choose to run only tests of a given class. For example:
+如果文件中有多个类，你可以选择只运行某个类中的测试。例如：
 
 ```bash
 pytest tests/test_optimization.py::OptimizationTest
 ```
 
-will run all the tests inside that class.
+这将运行该类中的所有测试。
 
-As mentioned earlier you can see what tests are contained inside the `OptimizationTest` class by running:
+如前所述，你可以在控制台中查看`OptimizationTest`类中包含了哪些测试：
 
 ```bash
 pytest tests/test_optimization.py::OptimizationTest --collect-only -q
 ```
 
-You can run tests by keyword expressions.
+你可以通过关键字表达式来运行特定的测试。
 
-To run only tests whose name contains `adam`:
+例如，要运行仅包含“adam”关键词的所有测试：
 
 ```bash
 pytest -k adam tests/test_optimization.py
 ```
 
-Logical `and` and `or` can be used to indicate whether all keywords should match or either. `not` can be used to
-negate.
+逻辑运算符`and` 和 `or` 可以用来表示是否所有的关键词都需要匹配。`not` 可以用来说明否定。
 
-To run all tests except those whose name contains `adam`:
+例如，要运行除包含“adam”关键词以外的所有测试：
 
 ```bash
 pytest -k "not adam" tests/test_optimization.py
 ```
 
-And you can combine the two patterns in one:
+或者，可以将两个模式结合起来：
 
 ```bash
 pytest -k "ada and not adam" tests/test_optimization.py
 ```
 
-For example to run both `test_adafactor` and `test_adam_w` you can use:
+例如，为了同时运行`test_adam_w`和`test_adam_w`这两个测试，可以使用：
 
 ```bash
 pytest -k "test_adam_w or test_adam_w" tests/test_optimization.py
 ```
 
-Note that we use `or` here, since we want either of the keywords to match to include both.
+这里我们使用了`or`，因为我们希望任意一个关键词都能匹配以包括这两个测试。
 
-If you want to include only tests that include both patterns, `and` is to be used:
+如果你想要包含所有满足两个条件的测试，那么应该使用`and`：
 
 ```bash
 pytest -k "test and ada" tests/test_optimization.py
 ```
 
-### Run only modified tests
+### 运行已修改的测试
 
-You can run the tests related to the unstaged files or the current branch (according to Git) by using [pytest-picked](https://github.com/anapaulagomes/pytest-picked). This is a great way of quickly testing your changes didn't break anything, since it won't run the tests related to files you didn't touch.
+你可以通过使用[pytest-picked](https://github.com/anapaulagomes/pytest-picked)来运行与未提交的文件或当前分支（根据Git）相关的测试。这是一个非常有用的特性，可以帮助你在提交更改之前快速验证它们没有破坏任何东西，因为它不会运行与你未接触的文件相关的测试。
 
 ```bash
 pip install pytest-picked
 ```
 
+然后运行：
+
 ```bash
 pytest --picked
 ```
 
-All tests will be run from files and folders which are modified, but not yet committed.
+所有来自被修改的文件和文件夹内的测试都将被运行。
 
-### Automatically rerun failed tests on source modification
+### 自动重新运行失败的测试
 
-[pytest-xdist](https://github.com/pytest-dev/pytest-xdist) provides a very useful feature of detecting all failed tests, and then waiting for you to modify files and continuously re-rerun those failing tests until they pass while you fix them. So that you don't need to re start pytest after you made the fix. This is repeated until all tests pass after which again a full run is performed.
+[pytest-xdist](https://github.com/pytest-dev/pytest-xdist)提供了一个非常实用的功能，即检测所有失败的测试，并在你修改源代码后连续重新运行这些失败的测试，直到它们通过为止。这样，当你修复问题时，就不需要手动重启`pytest`。这个过程会一直重复，直到所有测试都通过，这时会再次进行完整的运行。
 
 ```bash
 pip install pytest-xdist
 ```
 
-To enter the mode: `pytest -f` or `pytest --looponfail`
+要进入这种模式，运行：
 
-File changes are detected by looking at `looponfailroots` root directories and all of their contents (recursively).
-If the default for this value does not work for you, you can change it in your project by setting a configuration
-option in `setup.cfg`:
+```bash
+pytest -f
+```
+
+或者：
+
+```bash
+pytest --looponfail
+```
+
+`looponfailroots`选项允许你指定哪些目录将被监视是否有文件变化。默认情况下，它会检查`transformers`和`tests`目录及其所有内容。如果你想改变这一点，可以通过设置配置选项来实现：
 
 ```ini
 [tool:pytest]
 looponfailroots = transformers tests
 ```
 
-or `pytest.ini`/``tox.ini`` files:
+这将在`setup.cfg`、`pytest.ini`或`tox.ini`文件中起作用。
 
-```ini
-[pytest]
-looponfailroots = transformers tests
-```
-
-This would lead to only looking for file changes in the respective directories, specified relatively to the ini-file’s
-directory.
-
-[pytest-watch](https://github.com/joeyespo/pytest-watch) is an alternative implementation of this functionality.
+[pytest-watch](https://github.com/joeyespo/pytest-watch)是实现相同功能的另一种实现。
 
 
-### Skip a test module
+### 跳过测试模块
 
-If you want to run all test modules, except a few you can exclude them by giving an explicit list of tests to run. For example, to run all except `test_modeling_*.py` tests:
+如果要运行所有测试模块，但有一些你想排除在外，你可以通过提供一个要运行的测试的明确列表来排除某些模块。例如，要运行除了`test_modeling_*.py`测试之外的所有测试：
 
 ```bash
 pytest $(ls -1 tests/*py | grep -v test_modeling)
 ```
 
-### Clearing state
+### 清除状态
 
-CI builds and when isolation is important (against speed), cache should be cleared:
+在CI构建中或在隔离性很重要的环境中（比如速度优先的环境），缓存应被清空：
 
 ```bash
 pytest --cache-clear tests
 ```
 
-### Running tests in parallel
+### 并行运行测试
 
-As mentioned earlier `make test` runs tests in parallel via `pytest-xdist` plugin (`-n X` argument, e.g. `-n 2` to run 2 parallel jobs).
+正如前面提到的，`make test`使用`pytest-xdist`插件（`-n X`参数，例如`-n 2`用于运行2个并发作业）来并行运行测试。
 
-`pytest-xdist`'s `--dist=` option allows one to control how the tests are grouped. `--dist=loadfile` puts the tests located in one file onto the same process.
+`pytest-xdist`的`--dist=`选项允许控制测试的分组方式。`--dist=loadfile`会将同一文件中的测试放在同一个进程上。
 
-Since the order of executed tests is different and unpredictable, if running the test suite with `pytest-xdist` produces failures (meaning we have some undetected coupled tests), use [pytest-replay](https://github.com/ESSS/pytest-replay) to replay the tests in the same order, which should help with then somehow reducing that failing sequence to a minimum.
+由于测试顺序不同且不可预测，如果在使用`pytest-xdist`的情况下出现测试失败（这意味着我们有未发现的耦合测试），可以使用[pytest-replay](https://github.com/ESSS/pytest-replay)来重放测试，以便在相同的顺序下运行它们，这有助于减少随机性并可能帮助找到问题的根源。
 
-### Test order and repetition
+### 测试顺序和重复
 
-It's good to repeat the tests several times, in sequence, randomly, or in sets, to detect any potential inter-dependency and state-related bugs (tear down). And the straightforward multiple repetition is just good to detect some problems that get uncovered by randomness of DL.
+多次重复测试对于检测潜在的相互依赖问题和状态相关bug（如清理工作不正确）是非常有用的。此外，简单的多重重复有助于发现一些因随机性而暴露的问题。
 
 
-#### Repeat tests
+#### 重复测试
 
-- [pytest-flakefinder](https://github.com/dropbox/pytest-flakefinder):
+- [pytest-flakefinder](https://github.com/dropbox/pytest-flakefinder）：
 
 ```bash
 pip install pytest-flakefinder
 ```
 
-And then run every test multiple times (50 by default):
+然后运行每个测试多次（默认为50次）：
 
 ```bash
 pytest --flake-finder --flake-runs=5 tests/test_failing_test.py
 ```
 
-footnote: This plugin doesn't work with `-n` flag from `pytest-xdist`.
+脚注：一旦安装了`pytest-flakefinder`，它就会自动启用，因此不需要任何配置更改或命令行选项即可开始使用。
 
-footnote: There is another plugin `pytest-repeat`, but it doesn't work with `unittest`.
-
-
-#### Run tests in a random order
-
-```bash
-pip install pytest-random-order
-```
-
-Important: the presence of `pytest-random-order` will automatically randomize tests, no configuration change or
-command line options is required.
-
-As explained earlier this allows detection of coupled tests - where one test's state affects the state of another. When `pytest-random-order` is installed it will print the random seed it used for that session, e.g:
+如文档中所解释的那样，每次运行都会打印出使用的随机种子，例如：
 
 ```bash
 pytest tests
@@ -234,7 +224,7 @@ Using --random-order-bucket=module
 Using --random-order-seed=573663
 ```
 
-So that if the given particular sequence fails, you can reproduce it by adding that exact seed, e.g.:
+如果给定的特定序列失败，你可以通过复制粘贴上述种子值来重现它，例如：
 
 ```bash
 pytest --random-order-seed=573663
@@ -243,100 +233,95 @@ Using --random-order-bucket=module
 Using --random-order-seed=573663
 ```
 
-It will only reproduce the exact order if you use the exact same list of tests (or no list at all). Once you start to manually narrowing down the list you can no longer rely on the seed, but have to list them manually in the exact order they failed and tell pytest to not randomize them instead using `--random-order-bucket=none`, e.g.:
+在这种情况下，只有当使用完全相同的测试集（或不加选择的全部测试）时，才能依赖于种子值的确定性行为。一旦你开始手动缩小测试范围，你就不能再依靠种子值来保持一致的行为，而是必须手动列出它们并按确切的失败顺序排列，并指示`pytest`不要随机化它们，而是使用`--random-order-bucket=none`：
 
 ```bash
 pytest --random-order-bucket=none tests/test_a.py tests/test_c.py tests/test_b.py
 ```
 
-To disable the shuffling for all tests:
+要禁用随机排序，即使在`pytest-flakefinder`安装之后，也可以这样做：
 
 ```bash
 pytest --random-order-bucket=none
 ```
 
-By default `--random-order-bucket=module` is implied, which will shuffle the files on the module levels. It can also shuffle on `class`, `package`, `global` and `none` levels. For the complete details please see its [documentation](https://github.com/jbasko/pytest-random-order).
+关于`--random-order-bucket`的不同模式，请参阅其[文档](https://github.com/jbasko/pytest-random-order）。
 
-Another randomization alternative is: [`pytest-randomly`](https://github.com/pytest-dev/pytest-randomly). This module has a very similar functionality/interface, but it doesn't have the bucket modes available in `pytest-random-order`. It has the same problem of imposing itself once installed.
+另一个随机化的替代方案是：[pytest-randomly](https://github.com/pytest-dev/pytest-randomly)。这个模块具有类似的功能/接口，但它不像`pytest-random-order`那样支持不同的分桶模式。它在安装后也会强制自己生效，这可能不是你所期望的。
 
-### Look and feel variations
-
-#### pytest-sugar
-
-[pytest-sugar](https://github.com/Frozenball/pytest-sugar) is a plugin that improves the look-n-feel, adds a progressbar, and show tests that fail and the assert instantly. It gets activated automatically upon installation.
+#### 运行测试时的随机顺序
 
 ```bash
-pip install pytest-sugar
+pip install pytest-random-order
 ```
 
-To run tests without it, run:
+重要提示：一旦安装了`pytest-random-order`，它会在安装后自动启用，这意味着你的测试将会按照随机的顺序运行，而不需要任何配置更改或命令行选项。
+
+如文档中所述，这有助于检测测试之间的隐含依赖关系——其中一组的测试状态可能会影响另一组的结果。每当`pytest-random-order`被激活时，它将打印出使用的随机种子，例如：
 
 ```bash
-pytest -p no:sugar
+pytest tests
+[...]
+Using --random-order-bucket=module
+Using --random-order-seed=573663
 ```
 
-or uninstall it.
-
-
-
-#### Report each sub-test name and its progress
-
-For a single or a group of tests via `pytest` (after `pip install pytest-pspec`):
+如果特定的序列失败，你可以通过复制粘贴上述种子值来重现它，例如：
 
 ```bash
-pytest --pspec tests/test_optimization.py
+pytest --random-order-seed=573663
+[...]
+Using --random-order-bucket=module
+Using --random-order-seed=573663
 ```
 
-#### Instantly shows failed tests
-
-[pytest-instafail](https://github.com/pytest-dev/pytest-instafail) shows failures and errors instantly instead of waiting until the end of test session.
+这将确保测试按与上次失败时相同的顺序运行。但是，一旦你开始手动限制测试的范围，你就不能依赖于种子的确定行为，而是需要显式地列出它们并按确切的顺序排列，并指示`pytest`不要随机化它们，而是使用`--random-order-bucket=none`：
 
 ```bash
-pip install pytest-instafail
+pytest --random-order-bucket=none tests/test_a.py tests/test_c.py tests/test_b.py
 ```
 
-```bash
-pytest --instafail
-```
+这将导致所有指定的测试按原样运行，不受随机性的影响。
 
-### To GPU or not to GPU
+关于`--random-order-bucket`的不同模式，请参阅其[文档](https://github.com/jbasko/pytest-random-order）。
 
-On a GPU-enabled setup, to test in CPU-only mode add `CUDA_VISIBLE_DEVICES=""`:
+另一个随机化的替代方案是：[pytest-randomly](https://github.com/pytest-dev/pytest-randomly)。这个模块具有类似的功能/接口，但它不像`pytest-random-order`那样支持不同的分桶模式。它在安装后也会强制自己生效，这可能不是你所期望的。
+
+### 到GPU还是不到GPU
+
+在配备GPU的系统上，可以通过设置环境变量`CUDA_VISIBLE_DEVICES=""`来模拟CPU-only模式：
 
 ```bash
 CUDA_VISIBLE_DEVICES="" pytest tests/utils/test_logging.py
 ```
 
-or if you have multiple gpus, you can specify which one is to be used by `pytest`. For example, to use only the second gpu if you have gpus `0` and `1`, you can run:
+或者，如果你的系统中有多块GPU，你可以指定哪一块应该被使用。例如，如果有GPU编号为`0`和`1`，你可以运行：
 
 ```bash
 CUDA_VISIBLE_DEVICES="1" pytest tests/utils/test_logging.py
 ```
 
-This is handy when you want to run different tasks on different GPUs.
+这对于在不同GPU之间分配任务很有用。
 
-Some tests must be run on CPU-only, others on either CPU or GPU or TPU, yet others on multiple-GPUs. The following skip decorators are used to set the requirements of tests CPU/GPU/TPU-wise:
+有些测试必须在CPU-only模式下运行，有些则在GPU或TPU上运行，还有一些则需要在多GPU环境下运行。下面列出了用于设置GPU要求的装饰器：
 
-- `require_torch` - this test will run only under torch
-- `require_torch_gpu` - as `require_torch` plus requires at least 1 GPU
-- `require_torch_multi_gpu` - as `require_torch` plus requires at least 2 GPUs
-- `require_torch_non_multi_gpu` - as `require_torch` plus requires 0 or 1 GPUs
-- `require_torch_up_to_2_gpus` - as `require_torch` plus requires 0 or 1 or 2 GPUs
-- `require_torch_tpu` - as `require_torch` plus requires at least 1 TPU
+- `require_torch` - 这个测试将在Torch可用时运行
+- `require_torch_gpu` - 作为`require_torch`的扩展，要求至少有一块GPU可用
+- `require_torch_multi_gpu` - 作为`require_torch`的扩展，要求至少有两块GPU
+- `require_torch_non_multi_gpu` - 作为`require_torch`的扩展，要求最多只有一块GPU
+- `require_torch_up_to_2_gpus` - 作为`require_torch`的扩展，要求不超过两块GPU
 
-Let's depict the GPU requirements in the following table:
+让我们用一张表格来描述GPU需求的情况：
 
+| n gpus | decorator                       |
+|--------+----------------------------------|
+| `>= 0` | `@require_torch`                 |
+| `>= 1` | `@require_torch_gpu`             |
+| `>= 2` | `@require_torch_multi_gpu`       |
+| `< 2`  | `@require_torch_non_multi_gpu`   |
+| `< 3`  | `@require_torch_up_to_2_gpus`    |
 
-| n gpus | decorator                      |
-|--------+--------------------------------|
-| `>= 0` | `@require_torch`               |
-| `>= 1` | `@require_torch_gpu`           |
-| `>= 2` | `@require_torch_multi_gpu`     |
-| `< 2`  | `@require_torch_non_multi_gpu` |
-| `< 3`  | `@require_torch_up_to_2_gpus`  |
-
-
-For example, here is a test that must be run only when there are 2 or more GPUs available and pytorch is installed:
+例如，这里是必须在使用两块或多块GPU的环境下运行的一个测试示例：
 
 ```python no-style
 from testing_utils import require_torch_multi_gpu
@@ -345,7 +330,7 @@ from testing_utils import require_torch_multi_gpu
 def test_example_with_multi_gpu():
 ```
 
-These decorators can be stacked:
+这些装饰器可以被嵌套使用：
 
 ```python no-style
 from testing_utils import require_torch_gpu
@@ -355,22 +340,26 @@ from testing_utils import require_torch_gpu
 def test_example_slow_on_gpu():
 ```
 
-Some decorators like `@parametrized` rewrite test names, therefore `@require_*` skip decorators have to be listed last for them to work correctly. Here is an example of the correct usage:
+一些装饰器，如`@parametrized`，会重写测试的名字，因此`@require_*`跳过装饰器需要放在它们的后面才能正常工作。这里有一个正确的用法例子：
 
 ```python no-style
-from testing_utils import require_torch_multi_gpu
+from testing_utils import require_torch_gpu
 from parameterized import parameterized
 
-@parameterized.expand(...)
-@require_torch_multi_gpu
+@parameterized.expand([
+    ("negative", -1.5, -2.0),
+    ("integer", 1, 1.0),
+    ("large fraction", 1.6, 1),
+])
+@require_torch_gpu
 def test_integration_foo():
 ```
 
-This order problem doesn't exist with `@pytest.mark.parametrize`, you can put it first or last and it will still work. But it only works with non-unittests.
+这与`pytest.mark.parametrize`标记的使用略有不同，后者在`unittests`中不起作用，但在`pytest`测试中有效。
 
-Inside tests:
+在测试内部：
 
-- How many GPUs are available:
+- 有多少GPU可用：
 
 ```python
 from testing_utils import get_gpu_count
@@ -379,60 +368,58 @@ n_gpu = get_gpu_count()
 ```
 
 
-### Distributed training
+### 分布式训练
 
-`pytest` can't deal with distributed training directly. If this is attempted - the sub-processes don't do the right thing and end up thinking they are `pytest` and start running the test suite in loops. It works, however, if one spawns a normal process that then spawns off multiple workers and manages the IO pipes.
+`pytest`本身并不能直接处理分布式训练。如果尝试这样做，子进程实际上并不做正确的事情，而是在循环中运行`pytest`，这是无效的。然而，通过启动一个正常的进程，它可以管理输入输出管道，然后再从中派生出多个工作者。
 
-Here are some tests that use it:
+以下是一些使用它的测试示例：
 
 - [test_trainer_distributed.py](https://github.com/huggingface/transformers/blob/58e3d23e97078f361a533b9ec4a6a2de674ea52a/tests/trainer/test_trainer_distributed.py)
 - [test_deepspeed.py](https://github.com/huggingface/transformers/blob/58e3d23e97078f361a533b9ec4a6a2de674ea52a/tests/deepspeed/test_deepspeed.py)
 
-To jump right into the execution point, search for the `execute_subprocess_async` call in those tests, which you will find inside [testing_utils.py](testing_utils.py).
-
-You will need at least 2 GPUs to see these tests in action:
+要在这些测试中看到效果，你需要至少有两个GPU：
 
 ```bash
 CUDA_VISIBLE_DEVICES=0,1 RUN_SLOW=1 pytest -sv tests/test_trainer_distributed.py
 ```
 
-(`RUN_SLOW` is a special decorator used by HF Transformers to normally skip heavy tests)
+（`RUN_SLOW`是一个特殊的标志，用于通常绕过慢速测试的Hugging Face Transformers项目。）
 
-### Output capture
+### 输出捕获
 
-During test execution any output sent to `stdout` and `stderr` is captured. If a test or a setup method fails, its according captured output will usually be shown along with the failure traceback.
+在测试期间，发送到`stdout`和`stderr`的所有输出都被捕获。如果测试或准备方法失败，相应的捕获输出将与失败堆栈跟踪一起显示。
 
-To disable output capturing and to get the `stdout` and `stderr` normally, use `-s` or `--capture=no`:
-
-```bash
-pytest -s tests/utils/test_logging.py
-```
-
-To send test results to JUnit format output:
-
-```bash
-py.test tests --junitxml=result.xml
-```
-
-### Color control
-
-To have no color (e.g., yellow on white background is not readable):
+要禁用输出捕捉并获得正常的`stdout`和`stderr`流，可以使用`-s`或`--capture=no`选项：
 
 ```bash
 pytest --color=no tests/utils/test_logging.py
 ```
 
-### Sending test report to online pastebin service
+要将测试结果发送到JUnit格式的输出：
 
-Creating a URL for each test failure:
+```bash
+py.test tests --junitxml=result.xml
+```
+
+### 颜色控制
+
+要关闭颜色（例如，黄色在白色背景上不可读）：
+
+```bash
+pytest --color=no tests/utils/test_logging.py
+```
+
+### 将测试报告发送到在线粘贴板服务
+
+创建每个测试失败的URL：
 
 ```bash
 pytest --pastebin=failed tests/utils/test_logging.py
 ```
 
-This will submit test run information to a remote Paste service and provide a URL for each failure. You may select tests as usual or add for example -x if you only want to send one particular failure.
+这将提交测试运行信息到一个远程粘贴服务，并为每个失败提供一个URL。您可以选择性地选择要发送的测试，例如通过添加`-x`来发送单个特定失败的信息。
 
-Creating a URL for a whole test session log:
+创建整个测试会话日志的URL：
 
 ```bash
 pytest --pastebin=all tests/utils/test_logging.py
@@ -445,14 +432,19 @@ pytest --pastebin=all tests/utils/test_logging.py
 
 
 
-## Writing tests
+## 编写测试
 
-Most of the time if combining `pytest` and `unittest` in the same test suite works just fine. You can read [here](https://docs.pytest.org/en/stable/unittest.html) which features are supported when doing that , but the important thing to remember is that most `pytest` fixtures don't work. Neither parametrization, but we use the module `parameterized` that works in a similar way.
+大多数时候，如果将`pytest`和`unittest`结合在一个测试套件中是可以很好地工作的。你可以阅读[这里的文档](https://docs.pytest.org/en/stable/unittest.html)了解哪些特性在混合使用这两种框架时得到了支持。需要注意的是，大多数`pytest` fixture都不适用于`unittest`。同样，`parameterized`的参数化功能也不适用，但我们使用`parameterized`模块，它与`unittest`和`pytest`兼容。
 
 
-### Parametrization
+### 参数化
 
-Often, there is a need to run the same test multiple times, but with different arguments. It could be done from within the test, but then there is no way of running that test for just one set of arguments.
+经常会有需要多次运行同一个测试的需求，但每次使用不同的参数。这在`unittest`中可以通过`parameterized`模块轻松完成，而在`pytest`中则是通过`pytest.mark.parametrize`标记实现的。
+
+
+#### Unittest中的参数化
+
+下面的例子演示了如何在`unittest`中使用`parameterized`模块来进行参数化：
 
 ```python
 # test_this1.py
@@ -469,31 +461,30 @@ class TestMathUnitTest(unittest.TestCase):
         ]
     )
     def test_floor(self, name, input, expected):
-        assert_equal(math.floor(input), expected)
+        assert math.floor(input) == expected
 ```
 
-Now, by default this test will be run 3 times, each time with the last 3 arguments of `test_floor` being assigned the corresponding arguments in the parameter list.
+现在，这个测试会被运行三次，每次`test_floor`的最后三个参数分别对应参数列表中的相应元素。
 
-And you could run just the `negative` and `integer` sets of params with:
+你可以通过`-k`过滤器来选择性地运行特定的子测试，即使是在`parameterized`的情况下。例如，你可以运行`negative`和`integer`子测试：
 
 ```bash
 pytest -k "negative and integer" tests/test_mytest.py
 ```
 
-or all but `negative` sub-tests, with:
+或者，你可以运行除`negative`子测试外的所有子测试：
 
 ```bash
 pytest -k "not negative" tests/test_mytest.py
 ```
 
-Besides using the `-k` filter that was just mentioned, you can find out the exact name of each sub-test and run any
-or all of them using their exact names.
+除了使用`-k`过滤器外，你还可以找出每个子测试的确切名称，并通过它们的完整名称运行任何一个或所有子测试。
 
 ```bash
 pytest test_this1.py --collect-only -q
 ```
 
-and it will list:
+这将列出：
 
 ```bash
 test_this1.py::TestMathUnitTest::test_floor_0_negative
@@ -501,17 +492,19 @@ test_this1.py::TestMathUnitTest::test_floor_1_integer
 test_this1.py::TestMathUnitTest::test_floor_2_large_fraction
 ```
 
-So now you can run just 2 specific sub-tests:
+所以你现在可以运行特定的子测试：
 
 ```bash
 pytest test_this1.py::TestMathUnitTest::test_floor_0_negative  test_this1.py::TestMathUnitTest::test_floor_1_integer
 ```
 
-The module [parameterized](https://pypi.org/project/parameterized/) works for both: `unittests` and `pytest` tests.
+就像前面的例子一样。
 
-If, however, the test is not a `unittest`, you may use `pytest.mark.parametrize`.
+`parameterized`模块不仅适用于`unittest`，也适用于`pytest`测试。
 
-Here is the same example, this time using `pytest`'s `parametrize` marker:
+#### Pytest中的参数化
+
+下面是如何在`pytest`中使用`pytest.mark.parametrize`标记来进行参数化：
 
 ```python
 # test_this2.py
@@ -527,16 +520,16 @@ import pytest
     ],
 )
 def test_floor(name, input, expected):
-    assert_equal(math.floor(input), expected)
+    assert math.floor(input) == expected
 ```
 
-Same as with `parameterized`, with `pytest.mark.parametrize` you can have a fine control over which sub-tests are run, if the `-k` filter doesn't do the job. Except, this parametrization function creates a slightly different set of names for the sub-tests. Here is what they look like:
+与`parameterized`相比，`pytest.mark.parametrize`标记创建的子测试名称略有不同。以下是它们的样子：
 
 ```bash
 pytest test_this2.py --collect-only -q
 ```
 
-and it will list:
+这将列出：
 
 ```bash
 test_this2.py::test_floor[integer-1-1.0]
@@ -544,31 +537,29 @@ test_this2.py::test_floor[negative--1.5--2.0]
 test_this2.py::test_floor[large fraction-1.6-1]
 ```
 
-So now you can run just the specific test:
+所以你现在可以运行特定的子测试：
 
 ```bash
 pytest test_this2.py::test_floor[negative--1.5--2.0] test_this2.py::test_floor[integer-1-1.0]
 ```
 
-as in the previous example.
+就像之前的例子一样。
 
 
 
-### Files and directories
+### 文件和目录
 
-In tests often we need to know where things are relative to the current test file, and it's not trivial since the test could be invoked from more than one directory or could reside in sub-directories with different depths. A helper class `testing_utils.TestCasePlus` solves this problem by sorting out all the basic paths and provides easy accessors to them:
+在测试中，经常需要知道相对于当前测试文件的位置，但这并不是一件容易的事，因为测试可以从不同的目录调用，也可能位于深度不同的子目录中。`testing_utils.TestCasePlus`类解决了这个问题，它提供了对基本路径的简单访问，以及在这些路径上的便捷操作：
 
-- `pathlib` objects (all fully resolved):
+- `pathlib`对象（都已完全解析）：
+  - `test_file_path` - 当前的测试文件路径，即`__file__`
+  - `test_file_dir` - 包含当前测试文件的目录
+  - `tests_dir` - `tests`测试套件的目录
+  - `examples_dir` - `examples`测试套件的目录
+  - `repo_root_dir` - 仓库的根目录
+  - `src_dir` - `src`目录（即`transformers`子目录所在的目录）
 
-  - `test_file_path` - the current test file path, i.e. `__file__`
-  - `test_file_dir` - the directory containing the current test file
-  - `tests_dir` - the directory of the `tests` test suite
-  - `examples_dir` - the directory of the `examples` test suite
-  - `repo_root_dir` - the directory of the repository
-  - `src_dir` - the directory of `src` (i.e. where the `transformers` sub-dir resides)
-
-- stringified paths -- same as above but these return paths as strings, rather than `pathlib` objects:
-
+- 字符串化的路径 - 与上面的相同，但这些返回的是作为字符串的路径，而不是`pathlib`对象：
   - `test_file_path_str`
   - `test_file_dir_str`
   - `tests_dir_str`
@@ -576,7 +567,7 @@ In tests often we need to know where things are relative to the current test fil
   - `repo_root_dir_str`
   - `src_dir_str`
 
-To start using those all you need is to make sure that the test resides in a subclass of `testing_utils.TestCasePlus`. For example:
+要开始使用这些属性，只需让测试继承自`testing_utils.TestCasePlus`。例如：
 
 ```python
 from testing_utils import TestCasePlus
@@ -587,8 +578,7 @@ class PathExampleTest(TestCasePlus):
         data_dir = self.tests_dir / "fixtures/tests_samples/wmt_en_ro"
 ```
 
-If you don't need to manipulate paths via `pathlib` or you just need a path as a string, you can always invoked
-`str()` on the `pathlib` object or use the accessors ending with `_str`. For example:
+如果你不想使用`pathlib`对象，或者只需要路径作为字符串，你可以总是通过调用`str()`来转换`pathlib`对象，或者使用以`_str`结尾的访问器。例如：
 
 ```python
 from testing_utils import TestCasePlus
@@ -599,15 +589,13 @@ class PathExampleTest(TestCasePlus):
         examples_dir = self.examples_dir_str
 ```
 
-#### Temporary files and directories
+#### 临时文件和目录
 
-Using unique temporary files and directories are essential for parallel test running, so that the tests won't overwrite each other's data. Also we want to get the temporary files and directories removed at the end of each test that created them. Therefore, using packages like `tempfile`, which address these needs is essential.
+在测试中，创建独特的临时文件和目录非常重要，以确保并行运行的测试不会覆盖彼此的数据。我们还希望在测试结束时自动删除这些临时文件和目录。因此，使用像`tempfile`这样的包来解决这些问题是很重要的。
 
-However, when debugging tests, you need to be able to see what goes into the temporary file or directory and you want to know it's exact path and not having it randomized on every test re-run.
+然而，在调试测试时，你可能需要能够查看临时文件或目录的内容，并且希望能够看到它们的精确路径，而不是每次运行时都有随机化的路径。`testing_utils.TestCasePlus`类在这方面特别有用。它是一个`unittest.TestCase`的子类，所以我们可以很容易地在测试模块中继承它。
 
-A helper class `testing_utils.TestCasePlus` is best used for such purposes. It's a sub-class of `unittest.TestCase`, so we can easily inherit from it in the test modules.
-
-Here is an example of its usage:
+以下是它的使用示例：
 
 ```python
 from testing_utils import TestCasePlus
@@ -618,44 +606,41 @@ class ExamplesTests(TestCasePlus):
         tmp_dir = self.get_auto_remove_tmp_dir()
 ```
 
-This code creates a unique temporary directory, and sets `tmp_dir` to its location.
+这段代码创建了一个唯一的临时目录，并将`tmp_dir`设置为它的位置。
 
-- Create a unique temporary dir:
+- 创建一个独特的临时目录：
 
 ```python
 def test_whatever(self):
     tmp_dir = self.get_auto_remove_tmp_dir()
 ```
 
-`tmp_dir` will contain the path to the created temporary dir. It will be automatically removed at the end of the test.
+`tmp_dir`将包含新创建的临时目录的路径。它将在测试结束后自动删除。
 
-- Create a temporary dir of my choice, ensure it's empty before the test starts and don't empty it after the test.
+- 创建我自己选择的临时目录，确保它在测试开始时不为空，并且在测试结束后不将其清空。
 
 ```python
 def test_whatever(self):
     tmp_dir = self.get_auto_remove_tmp_dir("./xxx")
 ```
 
-This is useful for debug when you want to monitor a specific directory and want to make sure the previous tests didn't leave any data in there.
+这在你想要监控特定的目录并在调试过程中保留其中的数据时非常有用。
 
-- You can override the default behavior by directly overriding the `before` and `after` args, leading to one of the following behaviors:
+- 你甚至可以自定义`before`和`after`参数的行为，从而得到以下行为之一：
 
-  - `before=True`: the temporary dir will always be cleared at the beginning of the test.
-  - `before=False`: if the temporary dir already existed, any existing files will remain there.
-  - `after=True`: the temporary dir will always be deleted at the end of the test.
-  - `after=False`: the temporary dir will always be left intact at the end of the test.
+  - `before=True`: 临时目录在每次测试开始时会自动清空。
+  - `before=False`: 如果临时目录已经存在，现有的文件将不被移除。
+  - `after=True`: 临时目录将在每次测试结束后自动删除。
+  - `after=False`: 临时目录将在每次测试结束后保持不变。
+
+脚注：为了安全地执行等价于`rm -r`的操作，仅允许子目录存在于项目的检出存储库中，因此意外地不会删除`/tmp`或其他重要的部分文件系统。也就是说，请始终传递以`./`开头的路径。
+
+脚注：每个测试都可以注册多个临时目录，它们都将被自动删除，除非另有请求。
 
 
-footnote: In order to run the equivalent of `rm -r` safely, only subdirs of the project repository checkout are allowed if an explicit `tmp_dir` is used, so that by mistake no `/tmp` or similar important part of the filesystem will get nuked. i.e. please always pass paths that start with `./`.
+#### 临时sys.path覆盖
 
-footnote: Each test can register multiple temporary directories and they all will get auto-removed, unless requested otherwise.
-
-
-#### Temporary sys.path override
-
-If you need to temporary override `sys.path` to import from another test for example, you can use the
-`ExtendSysPath` context manager. Example:
-
+如果你需要在导入其他测试的过程中临时覆盖`sys.path`，你可以使用`ExtendSysPath`上下文管理器。例如：
 
 ```python
 import os
@@ -666,43 +651,38 @@ with ExtendSysPath(f"{bindir}/.."):
     from test_trainer import TrainerIntegrationCommon  # noqa
 ```
 
-### Skipping tests
+### 跳过测试
 
-This is useful when a bug is found and a new test is written, yet the bug is not fixed yet. In order to be able to
-commit it to the main repository we need make sure it's skipped during `make test`.
+有两种主要类型的跳过：
 
-Methods:
+- **skip**: 这意味着你预计你的测试只有在某些条件得到满足时才会成功，否则`pytest`应该完全跳过运行这个测试。常见的例子包括在非Windows平台上跳过仅Windows平台支持的测试，或者在缺少外部资源（如数据库）时跳过依赖于它们的测试。
+- **xfail**: 这意味着你预期测试会失败，原因可能是尚未实现的功能或尚未解决的bug。当一个预期的失败变成实际的成功（即`pytest.mark.xfail`标记下的测试通过了）时，它被称为`xpass`，并在测试总结中被报告。
 
--  A **skip** means that you expect your test to pass only if some conditions are met, otherwise pytest should skip running the test altogether. Common examples are skipping windows-only tests on non-windows platforms, or skipping tests that depend on an external resource which is not available at the moment (for example a database).
+这两者的重要区别在于，`skip`不会运行测试，而`xfail`则会。因此，如果代码中的bug会导致一些不良的状态，而这些状态会影响其他的测试，你应该避免使用`xfail`。
 
--  A **xfail** means that you expect a test to fail for some reason. A common example is a test for a feature not yet implemented, or a bug not yet fixed. When a test passes despite being expected to fail (marked with `pytest.mark.xfail`), it’s an xpass and will be reported in the test summary.
+#### 实现
 
-One of the important differences between the two is that `skip` doesn't run the test, and `xfail` does. So if the
-code that's buggy causes some bad state that will affect other tests, do not use `xfail`.
-
-#### Implementation
-
-- Here is how to skip whole test unconditionally:
+- 这里是如何无条件地跳过一个测试：
 
 ```python no-style
 @unittest.skip("this bug needs to be fixed")
 def test_feature_x():
 ```
 
-or via pytest:
+或者通过`pytest`的方式：
 
 ```python no-style
 @pytest.mark.skip(reason="this bug needs to be fixed")
 ```
 
-or the `xfail` way:
+或者`xfail`的方式：
 
 ```python no-style
 @pytest.mark.xfail
 def test_feature_x():
 ```
 
-Here's how to skip a test based on internal checks within the test:
+这里是如何基于内部的检查来决定是否跳过测试：
 
 ```python
 def test_feature_x():
@@ -710,7 +690,7 @@ def test_feature_x():
         pytest.skip("unsupported configuration")
 ```
 
-or the whole module:
+或者，你可以跳过整个模块：
 
 ```python
 import pytest
@@ -719,34 +699,28 @@ if not pytest.config.getoption("--custom-flag"):
     pytest.skip("--custom-flag is missing, skipping tests", allow_module_level=True)
 ```
 
-or the `xfail` way:
+或者`xfail`的方式：
 
 ```python
 def test_feature_x():
     pytest.xfail("expected to fail until bug XYZ is fixed")
 ```
 
-- Here is how to skip all tests in a module if some import is missing:
-
-```python
-docutils = pytest.importorskip("docutils", minversion="0.3")
-```
-
--  Skip a test based on a condition:
+- 这里是如何基于条件来跳过测试：
 
 ```python no-style
 @pytest.mark.skipif(sys.version_info < (3,6), reason="requires python3.6 or higher")
 def test_feature_x():
 ```
 
-or:
+或者：
 
 ```python no-style
 @unittest.skipIf(torch_device == "cpu", "Can't do half precision")
 def test_feature_x():
 ```
 
-or skip the whole module:
+或者跳过整个模块：
 
 ```python no-style
 @pytest.mark.skipif(sys.platform == 'win32', reason="does not run on windows")
@@ -754,15 +728,15 @@ class TestClass():
     def test_feature_x(self):
 ```
 
-More details, example and ways are [here](https://docs.pytest.org/en/latest/skipping.html).
+更多细节、例子和使用方式见[这里](https://docs.pytest.org/en/latest/skipping.html)。
 
 
 
-### Capturing outputs
+### 捕获输出
 
-#### Capturing the stdout/stderr output
+#### 捕获标准输出/错误输出
 
-In order to test functions that write to `stdout` and/or `stderr`, the test can access those streams using the `pytest`'s [capsys system](https://docs.pytest.org/en/latest/capture.html). Here is how this is accomplished:
+为了测试函数是否向`stdout`和/或`stderr`写入内容，测试可以访问这些流，使用`pytest`的[capsys系统](https://docs.pytest.org/en/latest/capture.html)。这是如何完成的：
 
 ```python
 import sys
@@ -789,7 +763,7 @@ def test_result_and_stdout(capsys):
     assert msg in err
 ```
 
-And, of course, most of the time, `stderr` will come as a part of an exception, so try/except has to be used in such a case:
+当然，大多数时候，`stderr`是通过异常抛出来产生的，所以在这种情况下，你需要使用`try/except`语句：
 
 ```python
 def raise_exception(msg):
@@ -806,7 +780,7 @@ def test_something_exception():
         assert msg in error, f"{msg} is in the exception:\n{error}"
 ```
 
-Another approach to capturing stdout is via `contextlib.redirect_stdout`:
+另一种捕获`stdout`的方法是使用`contextlib.redirect_stdout`上下文管理器：
 
 ```python
 from io import StringIO
@@ -829,9 +803,7 @@ def test_result_and_stdout():
     assert msg in out
 ```
 
-An important potential issue with capturing stdout is that it may contain `\r` characters that in normal `print` reset everything that has been printed so far. There is no problem with `pytest`, but with `pytest -s` these characters get included in the buffer, so to be able to have the test run with and without `-s`, you have to make an extra cleanup to the captured output, using `re.sub(r'~.*\r', '', buf, 0, re.M)`.
-
-But, then we have a helper context manager wrapper to automatically take care of it all, regardless of whether it has some `\r`'s in it or not, so it's a simple:
+为了方便调试测试问题，`CaptureStdout`、`CaptureStderr`和`CaptureStd`这三个上下文管理器类会自动处理所有这些情况，无论你是否使用`-s`选项运行`pytest`。
 
 ```python
 from testing_utils import CaptureStdout
@@ -841,7 +813,7 @@ with CaptureStdout() as cs:
 print(cs.out)
 ```
 
-Here is a full test example:
+这里有一个完整的测试示例：
 
 ```python
 from testing_utils import CaptureStdout
@@ -853,7 +825,7 @@ with CaptureStdout() as cs:
 assert cs.out == final + "\n", f"captured: {cs.out}, expecting {final}"
 ```
 
-If you'd like to capture `stderr` use the `CaptureStderr` class instead:
+如果你需要捕获`stderr`，使用`CaptureStderr`类：
 
 ```python
 from testing_utils import CaptureStderr
@@ -863,7 +835,7 @@ with CaptureStderr() as cs:
 print(cs.err)
 ```
 
-If you need to capture both streams at once, use the parent `CaptureStd` class:
+如果你需要同时捕获两个流，使用父级`CaptureStd`类：
 
 ```python
 from testing_utils import CaptureStd
@@ -873,12 +845,12 @@ with CaptureStd() as cs:
 print(cs.err, cs.out)
 ```
 
-Also, to aid debugging test issues, by default these context managers automatically replay the captured streams on exit from the context.
+此外，为了便于调试，这些上下文管理器会自动在退出上下文时回放捕获的流。
 
 
-#### Capturing logger stream
+#### 捕获日志记录流
 
-If you need to validate the output of a logger, you can use `CaptureLogger`:
+如果你需要验证日志输出的内容，你可以使用`CaptureLogger`类：
 
 ```python
 from transformers import logging
@@ -892,9 +864,9 @@ with CaptureLogger(logger) as cl:
 assert cl.out, msg + "\n"
 ```
 
-### Testing with environment variables
+### 测试环境变量
 
-If you want to test the impact of environment variables for a specific test you can use a helper decorator `transformers.testing_utils.mockenv`
+如果你想在特定的测试中测试环境变量的影响，你可以使用`mockenv`装饰器：
 
 ```python
 from testing_utils import mockenv
@@ -906,7 +878,7 @@ class HfArgumentParserTest(unittest.TestCase):
         env_level_str = os.getenv("TRANSFORMERS_VERBOSITY", None)
 ```
 
-At times an external program needs to be called, which requires setting `PYTHONPATH` in `os.environ` to include multiple local paths. A helper class `testing_utils.TestCasePlus` comes to help:
+在某些情况下，需要调用外部程序，这就需要设置`PYTHONPATH`环境变量以包含多个本地路径。`TestCasePlus`类可以帮助解决这个问题：
 
 ```python
 from testing_utils import TestCasePlus
@@ -918,15 +890,14 @@ class EnvExampleTest(TestCasePlus):
         # now call the external program, passing `env` to it
 ```
 
-Depending on whether the test file was under the `tests` test suite or `examples` it'll correctly set up `env[PYTHONPATH]` to include one of these two directories, and also the `src` directory to ensure the testing is done against the current repo, and finally with whatever `env[PYTHONPATH]` was already set to before the test was called if anything.
+根据测试文件是在`tests`还是在`examples`测试套件中，`get_env`方法将正确设置`PYTHONPATH`，包括`src`目录，以确保测试是基于当前仓库进行的，同时也考虑到了已经在`os.environ`中设置的任何`PYTHONPATH`值。
 
-This helper method creates a copy of the `os.environ` object, so the original remains intact.
+这个helper方法创建了一个`os.environ`对象的副本，因此原始环境保持不变。
 
 
-### Getting reproducible results
+### 获取可复制的测试结果
 
-In some situations you may want to remove randomness for your tests. To get identical reproducible results set, you
-will need to fix the seed:
+在一些场景中，你可能需要去除测试过程中的随机因素，以获得完全确定的结果。为此，你需要固定随机数生成器的种子：
 
 ```python
 seed = 42
@@ -953,20 +924,20 @@ np.random.seed(seed)
 tf.random.set_seed(seed)
 ```
 
-## Debugging tests
+## 调试测试
 
-To start a debugger at the point of the warning, do this:
+要使调试器在遇到警告时中断，你可以这样做：
 
 ```bash
 pytest tests/utils/test_logging.py -W error::UserWarning --pdb
 ```
 
 
-## A massive hack to create multiple pytest reports
+## 创建多个pytest报告的大规模hack
 
-Here is a massive `pytest` patching that I have done many years ago to aid with understanding CI reports better.
+下面是一个我在多年前为更好地理解CI报告中存在的问题所做的对`pytest`的巨大补丁。
 
-To activate it add to `tests/conftest.py` (or create it if you haven't already):
+要激活它，请在`tests/conftest.py`（如果没有的话，请创建它）中添加以下内容：
 
 ```python
 import pytest
@@ -985,13 +956,13 @@ def pytest_terminal_summary(terminalreporter):
         pytest_terminal_summary_main(terminalreporter, id=make_reports)
 ```
 
-and then when you run the test suite, add `--make-reports=mytests` like so:
+然后在运行测试套件时，添加`--make-reports=mytests`，如下所示：
 
 ```bash
 pytest --make-reports=mytests tests
 ```
 
-and it'll create 8 separate reports:
+这将创建八个单独的报告：
 ```bash
 $ ls -1 reports/mytests/
 durations.txt
@@ -1004,10 +975,6 @@ summary_short.txt
 warnings.txt
 ```
 
-so now instead of having only a single output from `pytest` with everything together, you can now have each type of report saved into each own file.
+这样，你就可以拥有每个类型报告的独立文件，而不是只有一个`pytest`的标准输出，里面混杂着各种信息。
 
-This feature is most useful on CI, which makes it much easier to both introspect problems and also view and download individual reports.
-
-Using a different value to `--make-reports=` for different groups of tests can have each group saved separately rather than clobbering each other.
-
-All this functionality was already inside `pytest` but there was no way to extract it easily so I added the monkey-patching overrides [testing_utils.py](testing_utils.py). Well, I did ask if I can contribute this as a feature to `pytest` but my proposal wasn't welcome.
+这个功能原本就在`pytest`中，但我找不到一种简单的方法来提取它，所以我通过[testing_utils.py](testing_utils.py)中的monkey-patching覆盖实现了它。嗯，我曾经问过是否可以将这个贡献作为一个特性加入`pytest`，但我的提议没有被接受。

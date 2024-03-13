@@ -1,487 +1,416 @@
-# Software Tune Up For The Best Performance
+软件调优以获得最佳性能
 
-The faster you can make your model to train the sooner the model will finish training, which is important not only to being first to publish something, but also potentially saving a lot of money.
+让模型训练得更快，模型完成训练的时间就越早，这对于抢先发布研究成果以及潜在地节省大量资金都至关重要。
 
-In general maximizing throughput is all about running many experiments and measuring the outcome and choosing the one that is superior.
+一般来说，最大化吞吐量就是关于运行多个实验并测量结果，然后选择表现最好的那个。
 
-In certain situations your modeling team may ask you to choose some hyper parameters that will be detrimental to throughput but overall beneficial for the overall model's success.
+在某些情况下，您的建模团队可能会要求您选择一些对吞吐量有害的超参数，但总体上对整个模型的成功有益。
 
+## 词汇表和概念
 
-## Glossary and concepts
+- HFU：硬件浮点运算利用率
+- MFU：模型浮点运算利用率
 
-- HFU: Hardware FLOPS Utilization
-- MFU: Model FLOPS Utilization
+### MACs与FLOPs、FLOPS与FLOP/s的区别
 
-### MACs vs FLOP vs FLOPS vs FLOP/s
+本节旨在澄清常见的性能指标定义及其之间的关系。
 
-This section is here to try to disambiguate the common performance metric definitions and their relationship to each other.
+**MAC与FLOP：**
 
-**MAC vs FLOP**:
+- 一个FLOP（浮点操作）可以是加法、减法、乘法或除法的任何一种操作。
+- 一个MAC（乘积累加）操作是一个乘法后跟一个加法，即：`a * b + c`
 
-- 1 FLOP (FLoating point OPeration) can be one of addition, subtraction, multiplication, or division operation.
+因此，1个MAC等于2个FLOP。同样常见的是现代硬件能够在单个时钟周期内执行1个MAC。
 
-- 1 MAC (Multiply-ACCumulate) operation is a multiplication followed by an addition, that is: `a * b + c`
+请注意，为了计算MACs相对于FLOPs的数量关系，逻辑是相反的，即MACs = 0.5 FLOPs -这有点令人困惑，因为我们刚刚说过1个MAC = 2个FLOP，但它确实有效 - 观察：100个FLOP = 50个MAC，因为每个MAC中有2个FLOP。
 
-Thus 1 MAC = 2 FLOPs. It's also quite common for modern hardware to perform 1 MAC in a single clock cycle.
+此外，虽然1个MAC = 2个FLOP，但反之并不一定成立。也就是说，2个FLOP不一定等于1个MAC。例如，如果将`.5*.6`重复执行100次，它将是100个FLOP，在这里将等于100个MAC，因为在这些示例中只执行了MAC中的乘法部分。
 
-Please note that to calculate the number of MACs in relationship to FLOPs the reverse logic applies, that is MACs = 0.5 FLOPs - it's somewhat confusing since we have just said that 1 MAC = 2 FLOPs, but it checks out - observe: 100 FLOPs = 50 MACs - because there are 2 FLOPs in each MAC.
+**FLOP与FLOPS与FLOP/s：**
 
-Moreover, while 1 MAC = 2 FLOPs, the reverse isn't necessarily true. That is 2 FLOPs isn't necessarily equal to 1 MAC. For example, if you did `.5*.6` 100 times it'd be 100 FLOPs, which here would equal to 100 MACs, because here only the multiply part of the MAC is executed.
+- 1个FLOP（浮点操作）是任何浮点加法、减法、乘法或除法操作。
+- 1个FLOPS（每秒浮点操作数）是指在1秒钟内执行的浮点操作数量 - 参见[FLOPS](https://en.wikipedia.org/wiki/FLOPS)。
 
-**FLOP vs FLOPS vs FLOP/s**
+进一步，您会遇到以下缩写：GFLOPS = 千兆FLOPS，TFLOPS = 太FLOPS等，因为它们更容易被快速理解，而不是150万亿FLOPS这样的数字。
 
-- 1 FLOP (FLoating point OPeration) is any floating point addition, subtraction, multiplication, or division operation.
+FLOPS的使用存在歧义，因为它有时用于表示总操作量，而在其他时候则用于表示每秒的操作量。后者是最常用的用法，也是本书中使用的定义。
 
-- 1 FLOPS (FLoating point OPeration per Second) is how many floating point operations were performed in 1 second - see [FLOPS](https://en.wikipedia.org/wiki/FLOPS)
+在科学写作中，使用FLOP/s来明确告诉读者这是每秒的操作量更为常见。尽管如此，这种特定的方法很难转换为变量名，因为非法字符需要删除。
 
-Further you will find the following abbreviations: GFLOPS = Giga FLOPS, TFLOPS = Tera FLOPS, etc., since it's much easier to quickly grasp 150TFLOPS rather than 150000000000000FLOPS.
+在一些地方，您可能还会看到FLOPs，这再次可能是指总量或每秒的操作量，因为大写和小写字母“s”之间的切换很容易发生。
 
-There is an ambiguity when FLOPS is used in writing - sometimes people use it to indicate the total quantity of operations, at other times it refers to operations per second. The latter is the most common usage and that is the definition used in this book.
+如果定义不明确，尝试搜索上下文可能会有所帮助，这将有助于推断其含义：
 
-In scientific writing FLOP/s is often used to clearly tell the reader that it's operations per second. Though this particular approach is hard to convert to a variable name since it still becomes `flops` when illegal characters are removed.
+- 如果它是数学方程的一部分并且有时间的分母，那么它指的是每秒的操作量。
+- 如果讨论速度或性能，通常指的是每秒的操作量。
+- 如果谈论完成某项任务所需的计算量，它指的是总的操作量。
 
-In some places you might also see FLOPs, which again could mean either, since it's too easy to flip lower and upper case `s`.
+### TFLOPS作为性能指标
 
-If the definition is ambiguous try to search for context which should help to derive what is meant:
+在开始优化培训设置性能之前，您需要一个可以用来查看是否正在改进的度量标准。您可以测量每迭代秒数、每秒迭代次数或其他类似的计时信息，但是有一个更有用的指标称为TFLOPS。
 
-- If it's a math equation and there is a division by time you know it's operations per second.
-- If speed or performance is being discussed it usually refers to operations per second.
-- If it talks about the amount of compute required to do something it refers to the total amount of operations.
+测量TFLOPS的优势在于，它可以指示您距离硬件制造商报告的理论峰值性能有多近。
 
-
-### TFLOPS as a performance metric
-
-Before you start optimizing the performance of your training setup you need a metric that you can use to see whether the throughput is improving or not. You can measure seconds per iteration, or iterations per second, or some other such timing, but there is a more useful metric that measures TFLOPS.
-
-Measuring TFLOPS is superior because without it you don't know whether you are close to the best performance that can be achieved or not. This measurement gives you an indication of how far you're from the peak performance reported by the hardware manufacturer.
-
-In this section I will use BLOOM's training for the exemplification. We used 80GB A100 NVIDIA GPUs and we trained in mixed bf16 regime. So let's look at the [A100 spec](https://www.nvidia.com/en-us/data-center/a100/) which tells us:
+在本节中，我将使用BLOOM的培训作为范例。我们使用了80GB的NVIDIA A100 GPU进行混合bf16模式下的培训。让我们看看[A100规格](https://www.nvidia.com/en-us/data-center/a100/)，其中告诉我们：
 
 ```
 BFLOAT16 Tensor Core 	312 TFLOPS
 ```
 
-Therefore we now know that if we were to only run `matmul` on huge bf16 matrices of very specific dimensions without copying to and from the device we should get around 312 TFLOPS max.
+这意味着如果我们仅在巨大的bf16矩阵上运行`matmul`而不涉及从设备到设备的复制或磁盘IO通信，我们应该能够实现大约312 TFLOPS的最大值。
 
-Practically though, due to disk IO, communications and copying data from the GPU's memory to its computing unit overhead and because we can't do everything in bf16 and at times we have to do math in fp32 (or tf32) we can really expect much less than that. The realistic value will vary from accelerator to accelerator, but for A100 in 2022 getting above 50% (155 TFLOPS) was an amazing sustainable throughput for a complex 384 GPUs training setup.
+实际上，由于磁盘IO、通信和数据在GPU内存与计算单元之间传输的开销，我们可以期望远低于这个数值。对于A100在2022年的实际可持续吞吐量超过50%（即155 TFLOPS左右）是非常了不起的。
 
-footnote: in 2023 the invention of flash attention and other techniques have pushed the bar to more than 50%.
+脚注：在2023年，发明的[闪存注意力](https://github.com/Dao-AILab/flash-attention)和其他技术已经将这一比例提高到了超过50%。
 
-When we first started tuning things up we were at <100 TFLOPS and a few weeks later when we launched the training we managed to get 150 TFLOPS.
+当我们第一次开始调整时，我们的TFLOPS不到100，几周后当我们启动培训时，我们已经设法将其提升至150 TFLOPS。
 
-The important thing to notice here is that we knew that we can't push it further by much and we knew that there was no more point to try and optimize it even more.
+重要的是要注意这里，我们知道我们不能通过太多方式来推动它，而且我们知道没有更多理由继续对其进行优化甚至更多。
 
-So a general rule of thumb for when you prepare for a massive model training - ask around what's the top TFLOPS one can expect to get with a given accelerator on a multi-node setup with the specified precision - and optimize until you get close to that. Once you did stop optimizing and start training.
+因此，在进行大规模模型培训准备时的一般经验法则是在给定的加速器上预期可以达到的最佳TFLOPS水平附近进行优化，一旦接近该水平就停止优化并开始培训。
 
-footnote: For 80GB A100s in 2022 that was 155, in 2023 it has been pushed to about 180 TFLOPS.
+脚注：对于80GB A100s在2022年，那是155，在2023年，它已被推高到约180 TFLOPS。
 
-footnote: When calculating TFLOPS it's important to remember that the math is different if [Gradient checkpointing](#gradient-checkpointing) are enabled, since when it's activated more compute is used and it needs to be taken into an account. Usually the cost is of an additional forward path, but recently better methods have been found that saves some of that recomputation.
+脚注：当启用梯度检查点时，计算TFLOPS需要考虑额外的计算成本。通常，这相当于额外的前向路径的成本，但在最近的研究中发现了一些方法可以减少部分重新计算。
 
-For decoder transformer models the following is an estimation formula which slightly under-reports the real TFLOPS:
+对于解码器转换器模型，以下是一种估算公式的简化形式，它略微低估了实际的TFLOPS：
 
-TFLOPS: `model_size_in_B * 4 * 2 * seqlen * global_batch_size / (time_in_sec_per_interation * total_gpus * 1e3)`
+TFLOPS：`model_size_in_B * 4 * 2 * seqlen * global_batch_size / (time_in_sec_per_interation * total_gpus * 1e3)`
 
-The factor of 4 is used with activation/gradient checkpointing, otherwise it will be 3. For 100B+ models, activation checkpointing will almost always be on.
-
-So the `3*2` is often called "model FLOPs" and `4*2` - "hardware FLOPs", correlating to MFU and HFU (model and hardware FLOPS per second divided by the accelerator's theoretical peak FLOPS)
+因子4适用于激活/梯度检查点的情况，否则它将为3。对于100B+模型，激活检查点几乎总是打开的。
 
 ```
 perl -le '$ng=64; $ms=52; $gbs=1024; $sp=127; $seqlen=2048; print $ms*4*2*$seqlen*$gbs / ( $sp * $ng * 1e3)'
 ```
-(ng = total gpus, ms = model size in B, gbs = global batch size, sp = throughput in seconds)
+(ng = 总共gpus, ms = 模型大小 in B, gbs = 全球批量大小, sp = 吞吐量 in 秒)
 
-Here is the same formula using `bash` env vars and which breaks down GBS into `MBS*DP*GAS` (GAS in this case corresponded to `pp_chunks` which was the number of chunks in the pipeline, but normally GAS just stands for Gradient Accumulation Steps):
+这里的`bash`环境变量的相同公式如下所示，它分解了GBS为`MBS*DP*GAS`（GAS在这种情况下对应于`pp_chunks`，这是管道中的块数量，但正常情况下GAS只是代表梯度累积步骤）：
 ```
 echo "($MSIZE*4*2*SEQLEN*$MICRO_BATCH_SIZE*$DP_SIZE*$GAS)/($THROUGHPUT*$NNODES*4*1000)" | bc -l
 ```
 
-The exact formula is in Equation 3 of Section 5.1 of the [Efficient Large-Scale Language Model Training on GPU Clusters Using Megatron-LM](https://arxiv.org/abs/2104.04473) paper. You can see the code [here](https://github.com/bigscience-workshop/Megatron-DeepSpeed/pull/251).
+确切的公式可以在《高效的大规模语言模型训练》论文的第5.1节的方程式3中找到。您可以在此处找到相应的代码[提交](https://github.com/bigscience-workshop/Megatron-DeepSpeed/pull/251)。
 
-footnote: For Inference only it'd be: `24Bsh^2 + 4Bs^2h` floating point operations per layer.
+脚注：对于推理只有：`24Bsh^2 + 4Bs^2h` 浮点运算 per 层。
+
+### MFU与HFU：
+
+模型浮点运算利用率（MFU）和硬件浮点运算利用率（HFU）估计硬件在模型的前向和反向传递期间（包括同步网络开销和可能的DataLoader I/O）的实际利用情况。
+
+HFU衡量实际使用的浮点运算。例如，[梯度检查点/激活重算](#gradient-checkpointing)功能重复了前向传递的部分内容第二次，因此事实上使用了更多的浮点运算。相比之下，MFU忽略实现细节，仅根据理论计算需求进行评估，因此不太准确。
+
+[减少大型转换器模型中的激活重算](https://arxiv.org/abs/2205.05198)是一篇值得阅读的论文，介绍了这些概念。
 
 
-### MFU vs HFU
+对于Bloom的培训，Megatron-LM发布了以下统计数据：
 
-Model FLOPS Utilization (MFU) and Hardware FLOPS Utilization (HFU) estimate how well the hardware is being utilized during `forward` and `backward` passes of the model (including any syncing networking overhead and possibly DataLoader IO).
-
-HFU measures the actual FLOPS. For example, the concept [Gradient checkpointing/Activation Recompution](#gradient-checkpointing) repeats all of parts of the `forward` pass a second time, so factually more FLOPS are used. Whereas MFU ignores implementation details and accounts only for the theoretical needs of the computation and thus less accurate.
-
-[Reducing Activation Recomputation in Large Transformer Models](https://arxiv.org/abs/2205.05198) is a good paper to read about these concepts.
-
-
-For example [Megatron-LM](https://github.com/NVIDIA/Megatron-LM) published the following stats for A100-80GB:
-
-| Model Size | Model FLOPs Utilization | Hardware FLOPs Utilization |
+| 模型尺寸 | 模型FLOPs利用率 | 硬件FLOPs利用率 |
 | :---: | :---: | :---: |
-| 22B   | 41.5% | 43.7% |
-| 175B  | 51.4% | 52.8% |
-| 530B  | 56.0% | 57.0% |
-| 1T    | 56.3% | 57.0% |
+| 22B | 41.5% | 43.7% |
+| 175B | 51.4% | 52.8% |
+| 530B | 56.0% | 57.0% |
+| 1T | 56.3% | 57.0% |
 
-More recent H100+A100 MFU/HFU numbers have been published [here](https://github.com/mosaicml/llm-foundry/tree/main/scripts/train/benchmarking#mfu-and-hfu).
+最近的H100+A100 MFU/HFU数字已发表[此处](https://github.com/mosaicml/llm-foundry/tree/main/scripts/train/benchmarking#mfu-and-hfu)。
 
+## 如何改善速度并节省内存
 
-## How To Improve Speed and Save Memory
+拥有更多的GPU内存可用于更大的批处理大小（BS），这使得GPU更加高效地进行计算，从而加快任务的完成速度。
 
-The more GPU memory you have for your batch size (BS) the more efficient the GPUs will be at performing compute, and the faster you will complete your task since you will be able to go through data faster.
+当然，这部分对于即使BS=1时出现GPU OOM的情况也尤为重要，这时您不想租用/购买更多硬件。
 
-Of course, this section is crucial for when you get GPU OOM with even BS=1 and you don't want to rent/buy more hardware.
+下面是对可以帮助提高速度或节省内存的方法的概述：
 
+| 方法 | 速度 | 记忆 |
+| :---: | :---: | :---: |
+| 梯度积累 | 是 | 是 |
+| 梯度检查点 | 是 | 是 |
+| 混合精度训练 | 是 | 否 |
+| 批次大小 | 是 | 是 |
+| 优化器选择 | 是 | 是 |
+| Dataloader | 是 | 否 |
+| Deepspeed零 | 否 | 是 |
+| 闪光注意 | 是 | 是 |
 
-Here is an overview of what features can help to either improve speed or save memory
+### 模型操作解剖
 
-| Method                   | Speed  | Memory |
-| :----------------------  | :----  | :----- |
-| Gradient accumulation    | Yes    | Yes    |
-| Gradient checkpointing   | Yes    | Yes    |
-| Mixed precision training | Yes    | No     |
-| Batch size               | Yes    | Yes    |
-| Optimizer choice         | Yes    | Yes    |
-| DataLoader               | Yes    | No     |
-| DeepSpeed Zero           | No     | Yes    |
-| Flash Attention          | Yes    | Yes    |
+变压器架构包含三个主要操作组，按计算强度分组如下：
 
+1. **张量收缩**
 
+    线性层和多头自注意组件都执行批处理的**矩阵-矩阵乘积**。这些操作是训练变压器中最密集的计算部分。
 
+2. **统计归一化**
 
-### Anatomy of Model's Operations
+    软最大和层归一化比张量收缩更轻量级，涉及一个或多个**降维操作**，其结果随后通过映射应用。
 
-Transformers architecture includes 3 main groups of operations grouped below by compute-intensity.
+3. **元素操作**
 
-1. **Tensor Contractions**
+    其余的操作包括偏差、dropout、激活和残差连接。这些都是最轻量级的操作。
 
-    Linear layers and components of Multi-Head Attention all do batched **matrix-matrix multiplications**. These operations are the most compute-intensive part of training a transformer.
+了解这一点有助于分析性能瓶颈。
 
-2. **Statistical Normalizations**
+此总结源自[数据移动就是你所需要的：2020年转换器优化案例研究](https://arxiv.org/abs/2007.00072)
 
-    Softmax and layer normalization are less compute-intensive than tensor contractions, and involve one or more **reduction operations**, the result of which is then applied via a map.
+### 模型内存使用解剖
 
-3. **Element-wise Operators**
+我们看到训练模型除了将模型放在GPU上之外还消耗了大量内存。这是因为有许多组件在训练过程中使用GPU内存。这些组件驻留在GPU内存中的如下：
 
-    These are the remaining operators: **biases, dropout, activations, and residual connections**. These are the least compute-intensive operations.
+1. 模型权重
+2. 优化器状态
+3. 梯度
+4. 正向激活保存用于梯度计算
+5. 临时缓冲区
+6. 与特定功能相关的内存
 
-This knowledge can be helpful to know when analyzing performance bottlenecks.
+典型模型在混合精度和AdamW优化器的训练中需要18字节/模型参数加上激活内存和临时内存。
 
-This summary is derived from [Data Movement Is All You Need: A Case Study on Optimizing Transformers 2020](https://arxiv.org/abs/2007.00072)
+让我们详细了解一下。
 
+**模型权重：**
 
-### Anatomy of Model's Memory Usage
+- 4字节 * 参数数量用于fp32训练
+- 6字节 * 参数数量用于混合精度训练（保持模型在fp32和fp16/bf16中的一个内存中）
 
-We've seen that training the model uses much more memory than just putting the model on the GPU. This is because there are many components during training that use GPU memory. The components on GPU memory are the following:
+**优化器状态：**
 
-1. model weights
-2. optimizer states
-3. gradients
-4. forward activations saved for gradient computation
-5. temporary buffers
-6. functionality-specific memory
+- 8字节 * 参数数量的正常AdamW（维护两个状态）
+- 4字节 * 参数数量的bf16混合精度训练中的AdamW（见[这项工作](https://github.com/huggingface/transformers/pull/21312))
+- 4字节 * 参数数量的其他优化器如SGD带动量（仅维护1个状态）或狮子或Adafactor（以及其他） （Adafactor使用一些额外的内存）
+- 2字节 * 参数数量的8位AdamW量化优化器，如[bitsandbytes](https://github.com/TimDettmers/bitsandbytes)
 
-A typical model trained in mixed precision with AdamW requires 18 bytes per model parameter plus activation memory and temp memory.
+**梯度：**
 
-Let's look at the details.
+- 4字节 * 参数数量的fp32或半精度混合精度训练中的参数
+- 2字节 * 参数数量的非混合半精度或半精度混合精度训练中的参数
 
-**Model Weights:**
+**正向激活：**
 
-- 4 bytes * number of parameters for fp32 training
-- 6 bytes * number of parameters for mixed precision training (maintains a model in fp32 and one in fp16/bf16 in memory)
+- 大小取决于许多因素，关键因素包括序列长度、隐藏大小和批处理大小。
 
-**Optimizer States:**
+有输入和输出被向前和向后函数传递和返回，以及正向激活保存用于梯度计算。
 
-- 8 bytes * number of parameters for normal AdamW (maintains 2 states)
-- 4 bytes * number of parameters for AdamW running at bf16. See [this work](https://github.com/huggingface/transformers/pull/21312) that uses `AnyPrecisionAdamW`.
-- 4 bytes * number of parameters for optimizers like SGD with momentum (maintains only 1 state) or LION, or Adafactor (and others) (Adafactor uses some additional memory beside 4 bytes)
-- 2 bytes * number of parameters for 8-bit AdamW optimizers like [bitsandbytes](https://github.com/TimDettmers/bitsandbytes)
+**临时内存：**
 
-**Gradients**
+此外，还有各种临时变量可能在计算过程中短暂分配，并在计算完成后释放。然而，这些可能导致OOM，因此在编码时战略性地思考此类临时变量并及时显式释放它们非常重要。
 
-- 4 bytes * number of parameters for either fp32 precision and in some frameworks with mixed half-precision precision training.
-- 2 bytes * number of parameters for non-mixed half-precision and in some frameworks with mixed half-precision precision training.
+**特定功能的记忆：**
 
-**Forward Activations**
+然后，您的软件可能有特殊的内存需求。例如，在使用beam search生成文本时，软件需要维护多个输入和输出的副本。
 
-- size depends on many factors, the key ones being sequence length, hidden size and batch size.
+对于**推理**，数学非常类似于训练，但没有优化器和梯度的内存需求。对于模型权重，只有一个倍增器用于模型参数的数量：
 
-There are the input and output that are being passed and returned by the forward and the backward functions and the forward activations saved for gradient computation.
+- 6字节在混合精度（4+2）
+- 4字节在fp32
+- 2字节在半精度
+- 1字节在量化int8精度
 
-**Temporary Memory**
+另一个很好的资源是[EleutherAI Cookbook](https://github.com/EleutherAI/cookbook)，它包含了基于配置和设置的[计算脚本](https://github.com/EleutherAI/cookbook/tree/main/calc)，这些脚本可以输出理论上的内存开销。
 
-Additionally there are all kinds of temporary variables which get released once the calculation is done, but in the moment these could require additional memory and could push to OOM. Therefore when coding it's crucial to think strategically about such temporary variables and sometimes to explicitly free those as soon as they are no longer needed.
+Alexander Smirnov提供了非常有用的[GPU VRAM Estimator](https://vram.asmirnov.xyz/)，以及[有关其工作的说明](https://asmirnov.xyz/vram)。
 
-**Functionality-specific memory**
+### 额外的GPU内存使用
 
-Then your software could have special memory needs. For example, when generating text using beam search, the software needs to maintain multiple copies of inputs and outputs.
+除了上述描述的内存使用外，还有一些GPU内存消费者，因此您不会得到完整的可用内存用于模型使用。
 
+#### 预加载的CUDA内核内存使用
 
-For **inference**, the math is very similar to training, minus optimizer states and gradients. And for model weights there is just a single multiplier of the number of parameters:
+当PyTorch首次使用CUDA时，它会预先占用0.5-2GB的GPU内存，减少了GPU的总可用内存。
 
-- 6 bytes in mixed precision (4+2)
-- 4 bytes in fp32
-- 2 bytes in half precision
-- 1 byte in quantized int8 precision
+CUDA内核预加载所需的内存量因GPU而异，并且在不同的PyTorch版本中也不同。让我们分配一个4字节的张量到cuda并检查有多少GPU内存被预先占用。
 
-Another excellent resource that takes you through the memory needs and other requirements is
-[Transformer Math 101](https://blog.eleuther.ai/transformer-math/).
-
-The [EAI cookbook](https://github.com/EleutherAI/cookbook) contains a set of [calculation scripts](https://github.com/EleutherAI/cookbook/tree/main/calc) that can output the theoretical memory overhead for a given training or inference calculation run based on your configuration and setup.
-
-There is a very handy [GPU VRAM Estimator](https://vram.asmirnov.xyz/) from Alexander Smirnov, and [the notes to how it works](https://asmirnov.xyz/vram).
-
-
-
-### Additional GPU memory usage
-
-In addition to the memory usage described in the previous section, there are other consumers of the GPU memory - so you never get the full memory for your model's use.
-
-#### Preloaded CUDA kernels memory usage
-
-When PyTorch uses CUDA for the first time, it may use up 0.5-2GB of GPU memory, reducing the GPU's total available memory.
-
-The size of allocated memory for cuda kernels varies between different GPUs, and also it can be different between pytorch versions. Let's allocate a 4-byte tensor on cuda and check how much GPU memory is used up upfront.
-
-With `pytorch==1.10.2`:
+使用`pytorch==1.10.2`：
 ```
 $ CUDA_MODULE_LOADING=EAGER python -c "import torch; x=torch.ones(1).cuda(); free, total = map(lambda x: x/2**30, torch.cuda.mem_get_info()); \
 used=total-free; print(f'pt={torch.__version__}: {used=:0.2f}GB, {free=:0.2f}GB, {total=:0.2f}GB')"
 pt=1.10.2: used=1.78GB, free=77.43GB, total=79.21GB
 ```
 
-With `pytorch==1.13.1`:
+使用`pytorch==1.13.1`：
 ```
 $ CUDA_MODULE_LOADING=EAGER python -c "import torch; x=torch.ones(1).cuda(); free, total = map(lambda x: x/2**30, torch.cuda.mem_get_info()); \
 used=total-free; print(f'pt={torch.__version__}: {used=:0.2f}GB, {free=:0.2f}GB, {total=:0.2f}GB')"
 pt=1.13.1: used=0.90GB, free=78.31GB, total=79.21GB
 ```
 
-The older pytorch "wasted" 1.78GB of A100, the newer only 0.9GB, thus saving a whooping 0.9GB, which can be the saving grace for the OOM situations.
+较旧的PyTorch浪费了A100上的1.78GB，而较新的PyTorch只需要0.9GB，从而节省了近0.9GB，这可能成为避免OOM的关键。
 
-`CUDA_MODULE_LOADING=EAGER` is needed in the recent pytorch version if we want to force cuda kernels pre-loading, which are otherwise lazy-loaded on demand. But do not use this setting in production since it's likely to use more memory than needed. The whole point of lazy-loading is to load only the kernels that are needed.
+`CUDA_MODULE_LOADING=EAGER` 在较新版本的PyTorch中需要强制提前加载CUDA内核，否则它们将在需要时懒惰加载。不要在生产环境中使用此设置，因为这可能会导致比需要的内存更多。懒惰加载的目的正是只在必要时加载内核。
 
-With `pytorch==2.1.1`:
+使用`pytorch==2.1.1`：
 ```
 $ CUDA_MODULE_LOADING=EAGER python -c "import torch; x=torch.ones(1).cuda(); free, total = map(lambda x: x/2**30, torch.cuda.mem_get_info()); \
 used=total-free; print(f'pt={torch.__version__}: {used=:0.2f}GB, {free=:0.2f}GB, {total=:0.2f}GB')"
 pt=2.1.1+cu121: used=0.92GB, free=78.23GB, total=79.15GB
 ```
-As compared to the lazy mode:
+与懒惰模式相比：
 ```
 $ python -c "import torch; x=torch.ones(1).cuda(); free, total = map(lambda x: x/2**30, torch.cuda.mem_get_info()); \
 used=total-free; print(f'pt={torch.__version__}: {used=:0.2f}GB, {free=:0.2f}GB, {total=:0.2f}GB')"
 pt=2.1.1+cu121: used=0.47GB, free=78.68GB, total=79.15GB
 ```
-There is a 450MB difference, but here we only loaded kernels to do `torch.ones` - the actual memory allocated at run time with other code using torch API will be somewhere between 0.47 and 0.92GB.
+这里有450MB的差异，但这里我们只加载了用于`torch.ones`的CUDA内核 - 实际的内存分配在运行时的其他Torch API调用中会有所不同，介于0.47和0.92GB之间。
 
+#### 内存碎片化
 
-#### Memory fragmentation
+随着模型分配和释放张量，内存可能会碎片化。这可能导致足够的连续空闲内存不足以容纳较大的内存分配，即使理论上应该足够。因此，即使在OOM的情况下，也可能有足够的可用内存分散在整个内存空间中，无法使用，除非进行非常小的分配。
 
-As the model allocates and frees tensors, the memory could fragment. That is there could be enough free memory to allocate, say, 1GB of contiguous memory, but it could be available in 100s of small segments spread out through the memory and thus even though the memory is available it can't be used unless very small allocations are made.
+环境变量`PYTORCH_CUDA_ALLOC_CONF`可以帮助解决这个问题，允许您替换默认的内存分配机制为更有效的。更多信息请参阅[内存管理](https://pytorch.org/docs/stable/notes/cuda.html#memory-management)。
 
-Environment variable `PYTORCH_CUDA_ALLOC_CONF` comes to help and allows you to replace the default memory allocation mechanisms with more efficient ones. For more information see [Memory management](https://pytorch.org/docs/stable/notes/cuda.html#memory-management).
+### 批次大小
 
+首先，有两种批次大小：
 
+1. 微型批次大小（MBS），也称为每个gpu的批次大小 - 这是单个gpu在一次模型`forward`调用中消费的样本数量。
 
+2. 全局批次大小（GBS） - 这是所有参与GPU在两次优化器步之间消耗的所有样品的总数。
 
-### Batch sizes
+模型副本是指一次需要多少gpu来容纳完整模型。
 
-First, there are usually two batch sizes:
+- 如果模型适合单GPU，那么模型副本只需1个GPU。通常，可以通过[数据并行性](../../training/model-parallelism#data-parallelism)使用多个GPU来进行训练。
+- 如果模型不适合单GPU，那么它通常需要某种形式的分割技术 - 它可以是[张量并行性](../../training/model-parallelism#tensor-parallelism)（TP），[管道并行性](../../training/model-parallelism#pipeline-parallelism)（PP），或者[ZeRO数据并行性](../../training/model-parallelism#zero-data-parallelism)（ZeRO-DP）。
 
-1. micro batch size (MBS), also known as batch size per gpu - this is how many samples a single gpu consumes during a model's single `forward` call.
-
-2. global batch size (GBS) - this is the total amount of samples consumed between two optimizer steps across all participating GPUs.
-
-Model replica is how many gpus are needed to fit the full model.
-
-- If the model fits into a single GPU a model replica takes 1 GPU. Usually then one can use multiple GPUs to perform  [Data Parallelism](../../training/model-parallelism#data-parallelism)
-- If the model doesn't fit into a single GPU, it'd usually require some sort of sharding technique - it can be
- [Tensor Parallelism](../../training/model-parallelism#tensor-parallelism) (TP),  [Pipeline Parallelism](../../training/model-parallelism#pipeline-parallelism) (PP), or [ZeRO Data Parallelism](../../training/model-parallelism#zero-data-parallelism) (ZeRO-DP).
-
-You can have as many data streams as there are replicas. Which is the same as the value of DP.
-- So in the simple case of a model fitting into a single GPU. There are as many data streams as there are GPUs. DP=N_GPUS
-- when the model doesn't fit onto a single GPU, then `DP=N_GPUs/(TP*PP)` in the case of 3D parallelism and DP=ZeRO-DP in the case of ZeRO parallelism.
-
-Going back to our global batch size (GBS) it's calculated as:
-
-```
-GBS = MBS*DP
-```
-
-So if you have 8 gpus (N_GPUS=8) and your MBS=4 and you do DP you end up with having GBS=32 because:
+你可以有尽可能多的数据流，就像你有副本一样。这与DP的大小相匹配。
+- 所以在一个简单的例子中，模型适合单GPU。有N_GPUS=8个GPU，MBS=4，DP=8。GBS=32，因为：
 
 ```
 GBS = MBS*DP = 4*8 = 32
 ```
 
-If you use TP with a degree of 2 (TP=2) and PP with a degree of 2 (PP=2) this means each model replica takes 4 gpus (`TP*PP`), and thus with N_GPUS=8
+如果使用TP且程度为2（TP=2）和PP且程度为2（PP=2），这意味着每个模型副本需要4个GPU(`TP*PP`)，现在我们有N_GPUS=8：
 
 ```
 DP = N_GPUS/(TP*PP) = 8 / (2*2) = 2
 ```
-and now GBS becomes:
+
+GBS现在是：
 
 ```
-GBS = MBS*DP = 4*2 = 8
+GBS = MBS*DP*GAS = 4*2*4 = 128
 ```
 
-If your training setup requires [Gradient Accumulation](#gradient-accumulation), one usually defines the interval of how many steps to wait before performing a gradient accumulation. The term is usually Gradient Accumulation Steps (GAS). If GAS=4 (i.e. sync grads every 4 steps) and TP=1, PP=1 and DP=8:
+通常，您希望使微型批次大小尽可能大，以便GPU内存接近满载，但又不能过于紧张。
 
+对于非常大的模型，全球批次大小可能会变得非常大。在这种情况下，您可以使用较小的微型批次大小或较少GPU或切换到不同的数据并行形式，以便GPU更有效地工作。
 
-```
-DP = N_GPUS/(TP*PP) = 8 / (1*1) = 8
-GBS = MBS*DP*GAS = 4*8*4 = 128
-```
+### 梯度积累
 
-Typically you want to make the micro batch size as large as possible so that the GPU memory is close to being full, but not too full.
+梯度积累背后的想法是，与其一次性计算整个批次的梯度，不如逐步迭代地计算它们。通过这种方式，我们可以显著增加整体批次大小，远远超出GPU内存所能容纳的范围。当然，额外的前向和后向传播可能会稍微降低训练的速度。
 
-With large models usually there is not much free GPU memory left to have a large micro batch size, therefore every additional sample you can fit is important.
+梯度积累步骤（GAS）定义了在更新模型权值之前等待多少步才进行梯度积累。
 
-While it's super important that sequence length and hidden size and various other hyper parameters are high multiples of 2 (64, 128 and higher) to achieve the highest performance, because in most models the batch dimension is flattened with the sequence length dimension during the compute the micro batch size alignment usually has little to no impact on performance.
+当使用管道并行时，非常大的梯度积累步骤是必须的，以将[管道气泡降至最低](../../training/model-parallelism/README.md#naive-model-parallelism-vertical)。
 
-Therefore if you tried to fit a micro batch size of 8 and it OOM'ed, but 7 fits - use the latter rather than 4. The higher the batch size the more samples you will be able to fit into a single step.
+由于优化器步骤不那么频繁，使用梯度积累还可以减少网络开销，特别是在使用[数据并行](../../training/model-parallelism#data-parallelism)时，因为梯度减少是通过`all_reduce`集体完成的，这需要梯度大小的2倍。因此，例如，如果您将GAS从1增加到8，网络开销将减少8倍，这在慢速节点间网络上可以显著提高训练的吞吐量。
 
-Of course, when using hundreds of GPUs your global batch size may become very large. In that case you might use a smaller micro batch size or use less GPUs or switch to a different form of data parallelism so that the GPUs work more efficiently.
+### 梯度检查点
 
+梯度检查点也称为激活重算、激活检查点或检查点激活。
 
+这种方法仅在训练期间相关，不在推理期间相关。
 
+启用梯度检查点允许我们在训练吞吐量方面进行交易以换取加速器的内存。当此特性处于活动状态时，模型输出的中间结果不再保留直到`backward`阶段结束。这极大地解放了大量的加速器内存。然而，当然，在`backward`阶段，这些输出必须重新计算。
 
-### Gradient Accumulation
+这当然因模型而异，但通常付出的代价是训练吞吐量下降约20-25%（有时更高，因为大多数激活需要在`backward`中重新计算）。但是，由于释放了大量的GPU内存，我们现在可以大幅增加每个gpu的批次大小，从而整体上提高系统的有效吞吐量。在某些情况下，这使我们能够将批次大小加倍甚至四倍，如果我们在没有检查点的较小批次大小下已经能够做到的话。（最近的论文报道了高达30-40%的额外开销。）
 
+在HF Transformers模型中，您可以通过`model.gradient_checkpointing_enable()`来激活它，或者如果您使用HF Trainer，则可以通过`--gradient_checkpointing 1`来激活它。
 
-The idea behind gradient accumulation is to instead of calculating the gradients for the whole batch at once to do it in smaller steps. The way we do that is to calculate the gradients iteratively in smaller batches by doing a forward and backward pass through the model and accumulating the gradients in the process. When enough gradients are accumulated we run the model's optimization step. This way we can easily increase the overall batch size to numbers that would never fit into the GPU's memory. In turn, however, the added forward and backward passes can slow down the training a bit.
+XXX：扩展来自[减少大型转换器模型中的激活重算](https://arxiv.org/abs/2205.05198)的新技术的纸，该技术找到了一种避免大多数激活重算的方法，从而同时节省内存和计算。
 
-Gradient Accumulation Steps (GAS) is the definition of how many steps are done w/o updating the model weights.
+### 内存高效的优化器
 
-When using Pipeline parallelism a very large Gradient Accumulation is a must to keep the [pipeline's bubble to the minimum](../../training/model-parallelism/README.md#naive-model-parallelism-vertical).
+最常见的优化器是Adam。它及其衍生产品占用了每个参数的8字节（2x fp32张量 - 一个是每个动量），这几乎占模型、优化器和梯度总内存分配的一半。因此，在某些情况下，使用其他优化器可能会拯救世界，只要它们能成功训练即可。并非所有的优化器都适合所有的训练任务。
 
-Since the optimizer step isn't performed as often with gradient accumulation there is an additional speed up here as well.
+4字节优化器：
 
-The following benchmarks demonstrate how increasing the gradient accumulation steps improves the overall throughput (20-30% speedup):
+- 有像Adafactor这样的优化器，它们只需要4字节。相同的LION优化器最近也被发明了。
 
-- [RTX-3090](https://github.com/huggingface/transformers/issues/14608#issuecomment-1004392537)
-- [A100](https://github.com/huggingface/transformers/issues/15026#issuecomment-1005033957)
+- `AnyPrecisionAdamW`。有些勇敢的人试图完全在BF16（不是混合精度！）中进行训练，包括优化器，因此他们只需要4字节/参数用于优化状态。请参阅[此项工作](https://github.com/huggingface/transformers/pull/21312)。提示：这个优化器需要Kahan求和和/或随机舍入，请参阅[回顾BFloat16培训（2020）](https://arxiv.org/abs/2010.06192)。您只需要8字节/参数用于权重、优化状态和梯度！而不是18！
 
-When [data parallelism](../../training/model-parallelism#data-parallelism) is used gradient accumulation further improves the training throughput because it reduces the number of gradient reduction calls, which is typically done via the `all_reduce` collective which costs a 2x size of gradients to be reduced. So for example, if one goes from GAS=1 to GAS=8 in `DistributedDataParallelism` (DDP) the network overhead is reduced by 8x times, which on a slow inter-node network can lead to a noticeable improvement in the training throughput.
+2字节优化器：
 
+- 有量化解决方案，如`bnb.optim.Adam8bit`，它只使用2字节而不是8（1字节用于每个动量）。可以从[这里](https://github.com/TimDettmers/bitsandbytes)获取它。安装完毕后，如果使用HF Trainer，您可以通过简单地将`--optim adamw_bnb_8bit`传递给它来启用它！
 
-### Gradient checkpointing
+对于速度比较，请参阅[基准测试](https://github.com/huggingface/transformers/issues/22101)
+在速度方面：`apex`的`apex.optimizers.FusedAdam`优化器到目前为止是最快的Adam实现。自从PyTorch 2.0以来，[torch.optim.AdamW](https://pytorch.org/docs/stable/generated/torch.optim.AdamW.html)添加了对`fused=True`选项的支持，这使其几乎与`apex.optimizers.FusedAdam`相当。
 
-Gradient Checkpointing is also known as Activation Recompution, Activation Checkpointing and Checkpoint Activations.
+## 模型执行速度
 
-This methodology is only relevant for training, and not during inference.
+### `forward`与`backward`执行速度对比
 
-Enabling gradient checkpointing allows one to trade training throughput for accelerator memory. When this feature is activated instead of remembering the outputs of, say, transformer blocks until the `backward` pass is done, these outputs are dropped. This frees up huge amounts of accelerator memory. But, of course, a `backward` pass is not possible without having the outputs of `forward` pass, and thus they have to be recalculated.
+对于卷积和线性层，`backward`中的浮点运算量通常是`forward`的两倍，这通常意味着~2倍的减速（有时更多，因为`backward`中的尺寸往往更加尴尬）。激活通常是带宽受限的，在`backward`中，激活通常需要读取比`forward`中更多的数据（例如，激活`forward`读一次、写一次；`backward`中的`gradOutput`和`forward`的输出都需要读，然后`gradInput`需要写一次）。
 
-This, of course, can vary from model to model, but typically one pays with about 20-25% decrease in throughput, but since a huge amount of gpu memory is liberated, one can now increase the batch size per gpu and thus overall improve the effective throughput of the system. In some cases this allows you to double or quadruple the batch size if you were already able to do a small batch size w/o OOM. (Recent papers report as high as 30-40% additional overhead.)
+## 内存剖析工具
 
-Activation checkpointing and gradient checkpointing are 2 terms for the same methodology.
+在这一章中，我们讨论了理论上模型大小和批次大小是如何计算内存需求的。但实际上事情并不总是这样。因此，您计划了一个特定的模型大小和批次大小，但当您真正使用它时，突然发现内存不足。您需要与实际代码和模型一起工作，找出哪些部分消耗了多少内存，以及是否有未计入的额外开销。
 
-For example, in HF Transformers models you do `model.gradient_checkpointing_enable()` to activate it in your custom Trainer or if you use the HF Trainer then you'd activate it with `--gradient_checkpointing 1`.
+为此，您需要使用某种内存剖析工具。市场上有很多内存剖析工具。
 
-XXX: expand on new tech from the paper: [Reducing Activation Recomputation in Large Transformer Models](https://arxiv.org/abs/2205.05198) which found a way to avoid most activation recomputations and thus save both memory and compute.
+一个有用的小工具，我开发它是为了轻松地对每一行或代码块的CPU/GPU内存分配/释放进行快速和容易的剖析，是[IPyExperiments](https://github.com/stas00/ipyexperiments)。您只需将代码加载到jupyter笔记本中，它就会自动告诉您每个代码块分配/释放了多少CPU/GPU内存。因此，例如，如果您想查看加载模型消耗了多少内存，以及在单个推理步骤中额外增加了多少内存，包括峰值的报告。
 
-### Memory-efficient optimizers
+## 矢量和矩阵尺寸的可分性
 
-The most common optimizer is Adam. It and its derivatives all use 8 bytes per param (2x fp32 tensors - one for each momentum), which account for almost half the memory allocation for the model, optimizer and gradients. So at times using other optimizers may save the day, if they successfully train that is. Not all optimizers are suitable for all training tasks.
+论文[为硬件设计模型架构的案例](https://arxiv.org/abs/2401.14489)调查了变压器尺寸对底层硬件的影响。关联的[脚本](https://github.com/EleutherAI/cookbook/tree/main/benchmarks/sizing)允许您自行运行基准测试，如果您不在NVIDIA V100/A100硬件上运行。
 
-4-byte optimizers:
+对于GEMMs（全连接的层），NVIDIA提供针对[输入特征](https://docs.nvidia.com/deeplearning/performance/dl-performance-fully-connected/index.html#input-features)和[批处理大小](https://docs.nvidia.com/deeplearning/performance/dl-performance-fully-connected/index.html#batch-size)的建议。
 
-- There are optimizers like Adafactor that need only 4 bytes. Same goes for the recently invented [LION optimizer](https://arxiv.org/abs/2302.06675).
+[Tensor Core Requirements](https://docs.nvidia.com/deeplearning/performance/dl-performance-matrix-multiplication/index.html#requirements-tc)定义了基于dtype和硬件的乘数。例如，对于fp16，建议的多倍数为8，但对于A100，它变成了64！
 
-- `AnyPrecisionAdamW`. Some courageous souls try to do the whole training in BF16 (not mixed precision!), including the optimizer and thus need only 4 bytes per parameter for optim states. See [this work](https://github.com/huggingface/transformers/pull/21312). Hint: this optimizer requires Kahan summation and/or stochastic rounding, see [Revisiting BFloat16 Training (2020)](https://arxiv.org/abs/2010.06192). You need only 8 bytes per parameter for weights, optim states and gradients here! Instead of 18!
+[The Case for Co-Designing Model Architectures with Hardware](https://arxiv.org/abs/2401.14489)提供了有关tile/wave量化和关注头数量的更多详细信息，但要点是：
 
-2-byte optimizers:
+### Tile和wave量化
 
-- There are quantized solutions like `bnb.optim.Adam8bit` which uses only 2 bytes instead of 8 (1 byte per momentum).  You can get it from [here](https://github.com/TimDettmers/bitsandbytes). Once installed, if you're using HF Trainer, you can enable it on with just passing `--optim adamw_bnb_8bit`!
+注释：
 
-For speed comparisons see [this benchmark](https://github.com/huggingface/transformers/issues/22101)
-Speed-wise:`apex`'s `apex.optimizers.FusedAdam` optimizer is so far the fastest implementation of Adam. Since pytorch-2.0 [torch.optim.AdamW](https://pytorch.org/docs/stable/generated/torch.optim.AdamW.html) added support for `fused=True` option, which brings it almost on par with `apex.optimizers.FusedAdam`.
+- `a`: 关注头的数量
+- `h`: 隐含维度大小
+- `s`: 序列长度
+- `b`: 微批次大小
+- `t`: 张量并行大小
 
+首先，一些背景知识。
 
-
-## Model execution speed
-
-### `forward` vs `backward` Execution Speed
-
-For convolutions and linear layers there are 2x flops in the backward compared to the forward, which generally translates into ~2x slower (sometimes more, because sizes in the backward tend to be more awkward). Activations are usually bandwidth-limited, and it’s typical for an activation to have to read more data in the backward than in the forward (e.g. activation forward reads once, writes once, activation backward reads twice, `gradOutput` and output of the forward, and writes once, `gradInput`).
-
-
-## Memory profiler tools
-
-In this chapter we discussed the theoretical math of how much this or that feature should consume in MBs of memory. But often in reality things aren't exactly the same. So you plan for a certain model size and batch sizes but when you come to use it suddenly there is not enough memory. So you need to work with your actual code and model and see which part takes how much memory and where things got either miscalculated or some additional missed overhead hasn't been accounted for.
-
-You'd want to use some sort of memory profiler for that purpose. There are various memory profilers out there.
-
-One useful tool that I developed for quick and easy profiling of each line or block of code is
-[IPyExperiments](https://github.com/stas00/ipyexperiments). You just need to load your code into a jupyter notebook and it'll automatically tell you how much CPU/GPU memory each block allocates/frees. So e.g. if you want to see how much memory loading a model took, and then how much extra memory a single inference step took - including peak memory reporting.
-
-
-
-## Vector and matrix size divisibility
-
-The paper, [The Case for Co-Designing Model Architectures with Hardware](https://arxiv.org/abs/2401.14489) investigates the effects of transformer sizing on the underlying hardware. The [associated scripts](https://github.com/EleutherAI/cookbook/tree/main/benchmarks/sizing) allow you to run the benchmarks yourself if you're running on hardware besides NVIDIA V100/A100.
-
-One gets the most efficient performance when batch sizes and input/output neuron counts are divisible by a certain number, which typically starts at 8, but can be much higher as well. That number varies a lot depending on the specific hardware being used and the dtype of the model.
-
-For fully connected layers (which correspond to GEMMs), NVIDIA provides recommendations for [input/output neuron counts](
-https://docs.nvidia.com/deeplearning/performance/dl-performance-fully-connected/index.html#input-features) and [batch size](https://docs.nvidia.com/deeplearning/performance/dl-performance-fully-connected/index.html#batch-size).
-
-[Tensor Core Requirements](https://docs.nvidia.com/deeplearning/performance/dl-performance-matrix-multiplication/index.html#requirements-tc) define the multiplier based on the dtype and the hardware. For example, for fp16 a multiple of 8 is recommended, but on A100 it's 64!
-
-For parameters that are small, there is also [Dimension Quantization Effects](https://docs.nvidia.com/deeplearning/performance/dl-performance-matrix-multiplication/index.html#dim-quantization) to consider, this is where tiling happens and the right multiplier can have a significant speedup.
-
-[The Case for Co-Designing Model Architectures with Hardware](https://arxiv.org/abs/2401.14489) provides much greater detail on tile/wave quantization and the number of attention heads, but the highlights are:
-
-### Tile and wave quantization
-
-Notation:
-
-- `a`: Number of attention heads
-- `h`: Hidden dimension size
-- `s`: Sequence length
-- `b`: Microbatch size
-- `t`: Tensor-parallel size
-
-First, some background.
-
-NVIDIA GPUs divide the output matrix into regions or tiles as shown in the below figure and schedule them to one of the available streaming multiprocessors (SM) on the GPU (e.g., A100 GPUs have 108 SMs). Each tile or thread block is processed in a Tensor Core, which NVIDIA introduced for fast tensor operations. NVIDIA Tensor Cores are only available for GEMMs with appropriate dimensions. Tensor Cores can be fully utilized when GEMM dimensions `m`, `k`, and `n` are multiples of 16 bytes and 128 bytes for V100 and A100 GPUs, respectively. Since a FP16 element is 2 bytes, this corresponds to dimension sizes that are multiples of 8 and 64 elements, respectively. If these dimension sizes are not possible, Tensor Cores perform better with larger multiples of 2 bytes.
+NVIDIA GPUs将输出矩阵划分为区域或瓷砖，并将它们调度到一个可用的streaming multiprocessor（SM）上。每个tile或thread block由一个Tensor Core处理，Tensor Core是由NVIDIA引入的，用于快速的tensor操作。Tensor Cores只能充分利用满足特定条件的GEMM。例如，V100和A100 GPU的FP16元素是2字节，这意味着GEMM的`m`、`k`和`n`维度必须是16字节和128字节整数倍，分别用于V100和A100。由于一个FP16元素是2字节，这对应于要素尺寸应是8和64元素的整数倍。如果这些尺寸不是可能的，Tensor Cores在处理Tile时会更好，它们可以接受更大倍数的2字节。
 
 ![tiling](images/tiling.png)
 
-There are multiple tile sizes that the kernel can choose from. If the GEMM size does not divide evenly into the tile size, there will be wasted compute, where the thread block must execute fully on the SM, but only part of the output is necessary. This is called the **tile quantization** effect, as the output is quantized into discrete tiles.
+有多种tile大小可供kernel选择。如果GEMM尺寸不能整齐地划分成tile大小，将会产生浪费的计算，线程块必须在SM上完全执行，但只有一部分输出是有必要的。这就是所谓的**tile量化**效应，因为输出被量化为离散的tile。
 
-Another quantization effect is called **wave quantization**. As the thread blocks are scheduled to SMs, only 108 thread blocks at a time may be scheduled. If, for example, 109 thread blocks must be scheduled, two rounds, or waves, of thread blocks must be scheduled to GPU. The first wave will have 108 thread blocks, and the second wave will have 1. The second wave will have almost the same latency as the first, but with a small fraction of the useful compute. As the matrix size increases, the last or tail wave grows. The throughput will increase, until a new wave is required. Then, the throughput will drop.
+另一种量化效果被称为**波形量化**。当线程块被安排到SM上时，最多108个线程块可以被安排。如果需要调度109个线程块，则需要两轮或多轮调度。第一轮将有108个线程块，第二轮将只有1个。第二轮的延迟将与第一轮相似，但其有用计算的比例要小得多。随着矩阵尺寸的增加，最后一波或尾波会增长。吞吐量会增加，直到需要一个新的波。那时，吞吐量将下降。
 
-What this means for transformers, is that for a given ratio of `h/a`, one needs to ensure they're on the crest of a wave. If you're using NVIDIA V100/A100 GPUs, we've already done this work for you in https://arxiv.org/pdf/2401.14489.pdf
+这对转换器来说意味着什么？对于给定的`h/a`比率，我们需要确保我们位于波浪的顶部。如果使用NVIDIA V100/A100 GPU，我们已经为您完成了这项工作，详情请见https://arxiv.org/pdf/2401.14489.pdf
 
-An example of this for 32 attention heads:
+对于32个关注头的一个例子：
 
 ![wave quantization](images/wave-quant.png)
 
-More powers of 2 in `h/a` helps!
+更多`h/a`的幂可以更好地帮助我们！
 
+### 关注的头部数量和大小
 
-### Number and size of attention heads
-
-Generally, it's most computationally efficient to keep the ratio of `h/a` as large as possible without accuracy degradation. A good figure from [The Case for Co-Designing Model Architectures with Hardware](https://arxiv.org/abs/2401.14489) showing this effect is:
+总的来说，保持最大的`h/a`比率而不影响准确性是最节能的。一个好的数字来自于[为硬件设计模型架构的案例](https://arxiv.org/abs/2401.14489)：
 
 ![attention heads](images/attention-less-heads.png)
 
+### 闪存注意
 
-### Flash attention
-
-If you're using [Flash Attention](https://github.com/Dao-AILab/flash-attention), good news! These MHA sizing constraints are taken care of for you. Your only constraint is to have a large enough ratio of `h/a` to saturate your GPU cores:
+如果您使用[闪存注意](https://github.com/Dao-AILab/flash-attention)，好消息是这些MHA尺寸约束得到了照顾。您的唯一约束是保持`h/a`比率足够大以饱和您的GPU核心：
 
 ![flash attention](images/flash-attention.png)
 
+### 最终推荐尺寸
 
-### Final recommendations for sizing
+完整的推荐是：
+1. 词汇量应可被64整除
+2. 微批次大小应尽可能大
+3. `b*s`、`h/a` 和 `h/t` 应该是2的幂
+4. `(b*a)/t` 应该是一个整数
+5. `t` 应该尽量小
 
-The full recommendations are:
-1. Vocab size divisible by 64
-2. Microbatch size as large as possible
-3. `b*s`, `h/a`, and `h/t` should be divisible by a power of 2
-4. `(b*a)/t` should be an integer
-5. `t` should be small as possible
-
-
-## Contributors
+## 贡献者
 
 [Quentin Anthony](https://github.com/Quentin-Anthony)
+
+翻译：
+
+Stas Sorokin

@@ -1,15 +1,15 @@
-# Re-train HF Hub Models From Scratch Using Finetuning Examples
+# 从零开始重新训练HF Hub模型，使用微调示例
 
-HF Transformers has awesome finetuning examples  https://github.com/huggingface/transformers/tree/main/examples/pytorch, that cover pretty much any modality and these examples work out of box.
+Hugging Face的Transformers提供了非常棒的微调示例 https://github.com/huggingface/transformers/tree/main/examples/pytorch，几乎涵盖了所有模式，并且这些例子可以直接运行。
 
-**But what if you wanted to re-train from scratch rather than finetune.**
+但是，如果你想从零开始重新训练而不是微调呢？
 
-Here is a simple hack to accomplish that.
+这里有一个简单的技巧来实现这一点。
 
-We will use `facebook/opt-1.3b` and we will plan to use bf16 training regime as an example here:
+我们将使用`facebook/opt-1.3b`并计划使用bf16训练方案作为这里的示例：
 
-```
-cat << EOT > prep-bf16.py
+```bash
+cat << EOF > prep-bf16.py
 from transformers import AutoConfig, AutoModel, AutoTokenizer
 import torch
 
@@ -23,22 +23,22 @@ path = "opt-1.3b-bf16"
 
 model.save_pretrained(path)
 tokenizer.save_pretrained(path)
-EOT
+EOF
 ```
 
-now run:
+现在运行：
 
-```
+```bash
 python prep-bf16.py
 ```
 
-This will create a folder: `opt-1.3b-bf16` with everything you need to train the model from scratch. In other words you have a pretrained-like model, except it only had its initializations done and none of the training yet.
+这将创建一个文件夹：`opt-1.3b-bf16`，其中包含您需要的一切来从头开始训练模型。换句话说，你有一个预训练样式的模型，除了它的初始化已经完成之外，还没有进行任何培训。
 
-Adjust to script above to use `torch.float16` or `torch.float32` if that's what you plan to use instead.
+调整上面的脚本以使用`torch.float16`或`torch.float32`如果您打算改用它们的话。
 
-Now you can proceed with finetuning this saved model as normal:
+现在你可以像往常一样继续微调这个保存的模型：
 
-```
+```bash
 python -m torch.distributed.run \
 --nproc_per_node=1 --nnode=1 --node_rank=0 \
 --master_addr=127.0.0.1 --master_port=9901 \
@@ -52,15 +52,13 @@ examples/pytorch/language-modeling/run_clm.py --bf16 \
 linear --warmup_steps 500 --report_to tensorboard --output_dir save_dir
 ```
 
-The key entry being:
-```
+关键条目是：
+```bash
 --model_name_or_path opt-1.3b-bf16
 ```
 
-where `opt-1.3b-bf16` is your local directory you have just generated in the previous step.
+其中`opt-1.3b-bf16`是你刚刚在上一步中生成的本地目录。
 
-Sometimes it's possible to find the same dataset that the original model was trained on, sometimes you have to use an alternative dataset.
+其他超参数有时可以在论文或随附模型的文档中找到。
 
-The rest of the hyper-parameters can often be found in the paper or documentation that came with the model.
-
-To summarize, this recipe allows you to use finetuning examples to re-train whatever model you can find on [the HF hub](https://huggingface.co/models).
+简而言之，这种食谱允许您使用微调示例来重新训练[HF中心](https://huggingface.co/models)上可用的任何模型。

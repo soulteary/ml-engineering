@@ -1,58 +1,51 @@
-# Inference
+# 推断（Inference）
 
-XXX: this is super-early - please ignore for now - just gathering content at this stage.
+请注意，以下内容处于非常早期的阶段，目前可以忽略。我们正在收集内容，以便将来进一步开发和细化。
 
+## 词汇表
 
-## Glossary
+- LPU：语言处理单元™ （Language Processing Unit™）
 
-- LPU: Language Processing Unit™
+## 概念
 
-## Concepts
+### 预填充与解码（Prefill and Decode）
 
-### Prefill and Decode
+在进行推断时，存在两个主要步骤：
 
-When doing inference there are 2 stages:
+1. **预填充**（Prefill）：由于提示中的所有令牌都是已知的，因此可以在一次操作中处理整个提示长度（类似于训练过程），并将中间状态缓存到内存中（通常称为“键值”（Key Value，简称 KV）缓存）。这个阶段的延迟贡献很小，因为即使是一个包含 1000 个令牌的提示也可以在足够的内存下以相当快的速度进行处理。
 
-1. Prefill: as all tokens of the prompt are known - process the full prompt length at once (similar to training) and cache the intermediate states (KV cache). This stage contributes very little latency as even a 1k prompt can be processed really fast, given enough memory.
+2. **解码**（Decode）：这是生成新令牌的过程，逐个令牌地进行（采用自回归方法），基于所有的先前令牌（即提示以及到目前为止生成的任何新令牌）。因此，这个阶段对生成过程中的总延迟贡献最大，因为它不像预填充那样能够并行化。
 
-2. Decode: new tokens generation happens, one new token at a time (regressive approach) based on all the previous tokens (the prompt and any new tokens generated so far). Thus this stage contributes the most to the generation's latency as unlike prefill, decoding can't be parallelized.
+### 批处理（Batching）
 
+逐个令牌地处理解码阶段是非常低效的使用硬件资源的。通过将多个查询组合在一起（即**批量处理**（Batch）），我们可以显著提高硬件利用率，并且能够同时处理多个请求。
 
+可能的最大批次大小取决于加载模型权重后剩余的内存量，以及在预填充过程中已经填入 KV-cache 的中间状态的大小。
 
-### Batching
+#### 静态批处理（Static Batting）
 
-Processing the decoding stage one token at a time is extremely accelerator-inefficient. Batching multiple queries together improved the accelerator utilization and enables processing multiple requests at once.
+这是一种最直接、最简单的批处理方式，其中前 N 个查询被一起打包成一个大批次。这种方法的缺点是如果许多查询已经完成生成，它们必须等待最长的那个生成查询完成才能返回给调用方，这会大大增加响应时间。
 
-The maximum possible batch size depends on how much memory is left after loading the model weights and filling the KV-cache with intermediate states.
+#### 在途批处理（In-Flight Batting）
 
-#### Static batching
+在途批处理是一种动态的处理方式，其中生成引擎会在结果完成后立即移除已完成的结果，并用新的查询替换它们，而不需要等待整个批次完成。这样做的结果是每个序列的位置都可以独立于其他位置进行不同的进度，例如位置 0 的序列可能在生成它的第 10 个令牌，而位置 1 的序列可能刚刚开始第一个令牌的生成，位置 3 的序列则可能在产生最后一个令牌。
 
-This is the naive straightforward batching where the first N queries are batched together - the problem here is that if many queries have finished generating they will have to wait for the longest to generate query to complete before they can be returned to the caller - greatly increasing the latency.
+这种方法提高了响应时间，因为在不需要等待整个批次完成的情况下，完成的序列可以被立即返回，并且新的提示无需等待下一个可用批次即可开始处理。当然，如果在计算资源全负荷运行且没有空闲容量的情况下，一些请求可能会遇到延迟，直到有可用的计算资源来处理这些请求。
 
-#### In-flight batching
+### 投机性推断（Speculative Inference）
 
-In-flight batching is a process where the generation engine removes completed results as soon as they are done and replacing them with new queries, without waiting for the whole batch to complete. So that a sequence in position 0 in the batch could be generating its 10th token, while a sequence in position 1 in the batch could be just starting its first token generation, and position 3 is producing its last token.
+由于逐个令牌生成速度极慢，有时可以通过使用一个小得多的快速草稿模型来欺骗系统以加快这个过程。例如，如果我们有一个正常情况下使用 Llama-70B 进行的缓慢推断任务，但我们可以尝试使用 Llama-7b 作为草稿模型，然后一次性验证其预测是否正确。
 
-This improves the response time, since there is no need for a sequence that already finished not to be returned immediately and there is no need for a new prompt to wait for the next batch to become available. Of course, if all of the compute is fully busy, and there are no new openings in the batch, then some requests will have to wait before the compute will start processing those.
-
-
-### Speculative inference
-
-Because it's very slow to generate tokens one a time, sometimes it is possible to cheat and speed things up by using a much smaller and faster draft model. So for example, your normal inference uses Llama-70B which would be quite slow, but we could use Llama-7b as a draft model and then we could verify if the prediction is correct but doing it at once for all tokens.
-
-Example: let's take a prompt `I'm turnin', turnin', turnin', turnin', turnin' around and all that I can see is just` and now:
-
-1. use Llama-7b to predict `another lemon tree` auto-regressively, in 3 steps, but much faster than Llama-70b.
-2. now use Llama-70b to run a batch of 3 prompts:
+示例：假设我们有这样一个提示 “I'm turnin', turnin', turnin', turnin', turnin' around and all that I can see is just” 和接下来的预测 “another lemon tree”。现在，我们可以用 Llama-7b 快速预测这三个令牌，然后在 Llama-70b 上运行一组三个提示的批量处理：
 
 ```
 [...I can see is just]
 [...I can see is just another]
 [...I can see is just another lemon]
 ```
-I shortened the full prompt for the sake of the demo with `...` - it should be there for real. And I'm pretending that each token is a full word here.
+我这里简化了完整的提示，实际上应该包括省略的部分（...），只是为了演示的目的。而且我在这里假装每个令牌都是一个完整单词，但实际上并不是这样的。
 
-And now in a single step Llama-70B generates:
+接下来，Llama-70b 将一次性生成如下结果：
 
 ```
 [...I can see is just] another
@@ -60,87 +53,66 @@ And now in a single step Llama-70B generates:
 [...I can see is just another lemon] tree
 ```
 
-Now there could be multiple outcomes:
-- if everything matches - in 3 short and 1 long step we generated the final result, instead of using 3 long steps.
-- if only `another lemon` matched - we might still better off if it saved time.
-- if nothing or little matched we wasted a bit of time.
+在这种情况下可能有几种情况发生：
+- 如果一切匹配，那么我们在三次快速的步骤和一个较长的步骤内就得到了最终结果，而不是使用三次长步骤。
+- 如果只有 "another lemon" 匹配，我们仍然可能节省了一些时间。
+- 如果没有任何或很少的内容匹配，我们就浪费了一点时间。
 
-Obviously, if instead of 3 tokens we had more tokens the savings are likely to be bigger.
+显然，如果令牌数量更多，节约的时间可能会更明显。
 
-Also, don't miss the fact that we did the same amount of compute here and then some, as compared to doing this generation with the large model normally, but the latency of this approach can be much better - so the user on average should get a better response time from your application using it - if the draft model is much smaller and still produces good predictions.
+不要忽视这样一个事实：虽然我们从整体上做了相同的计算量，但我们通过这种方式有可能极大地减少了用户的平均等待时间——如果草稿模型的性能足够好。
 
+### 键值缓存（Key-Value Caching）
 
-### Key-value caching
+每次重新计算所有之前的键值（key value，简称 KV）之前的状态是非常昂贵的，因此它们会被缓存在加速器的内存中。新的计算出的 KV 值会被追加到现有的缓存中。
 
-It'd be very expensive to recalculate all the previous KV-values before each new token is generated and thus they are cached in accelerator's memory. Newly computed KV-values are appended to the existing cache.
+![带有缓存的计算流程图](images/infer-kv-cache.png)
 
-![computation process with caching inference](images/infer-kv-cache.png)
+（来源：[NVIDIA Developer Blog](https://developer.nvidia.com/blog/accelerated-inference-for-large-transformer-models-using-nvidia-fastertransformer-and-nvidia-triton-inference-server/)）
 
-([source](https://developer.nvidia.com/blog/accelerated-inference-for-large-transformer-models-using-nvidia-fastertransformer-and-nvidia-triton-inference-server/))
+有些缓存是与模型相关的，而另一些则是特定层的。
 
-Some caches are per model, others are per layer.
+### 内存需求（Memory Requirements）
 
+1. 模型参数存储 - 模型参数的数量乘以每字节的数据类型大小，例如，半精度浮点数（fp16/bf16）为 2 字节，单精度浮点数为 4 字节。对于一个 70B 参数的模型，如果使用 bf16，我们需要大约 140GB 的加速器内存。
+2. 激活内存（Activation Memory） - 这是用于模型内部运算的临时内存，它依赖于批处理大小和序列长度。
+3. KV 缓存注意力张量（KV Cache of Attention Tensors） - 对每个令牌来说，缓存的大小通常是 `2 * hidden_size * num_hidden_layers * dtype_size_in_bytes`，这里的 2 代表的是 K 和 V 缓存。例如，对于 Llama2-70B 模型，如果使用 bf16，这个数字将是 `2 * 8192 * 80 * 2`，大约等于 2.6 MB 每令牌（考虑到 `hidden_size = 8192` 和 `num_hidden_layers = 80`）。对于 1024 个令牌和 16 的批处理大小，这将总计约 42.5GB。
 
-### Memory requirements
+### 模型并行（Model Parallelism）
 
-1. Model weights - `model_size_in_Billion_parameters * dtype_size_in_bytes` - e.g. fp16/bf16 is 2 bytes, fp32 is 4 bytes - so a 70B param model in bf16 needs `70*2=140` GB of accelerator memory.
-2. Activation memory - this is the processing temp memory which would depend on batch size and sequence length
-3. KV Cache of attention tensors - the cache size per token is usually `2*hidden_size*num_hidden_layers*dtype_size_in_bytes`, where 2 stands for K and V caches. For example for LLama2-70B in bf16 it's `2*8192*80*2` => 2.6MB per token (`hidden_size=8192` and `num_hidden_layers=80`). And for 1024 tokens and a batch size of 16, that would add up to 42.5GB.
+当模型太大以至于无法放入单个加速器或者即使在勉强放入之后效率不高时，来自训练阶段的相同[模型并行技术](../training/model-parallelism)也适用于推断阶段。
 
+## 推断框架（Inference Frameworks）
 
-### Model parallelism
+### Deepspeed FastGen
 
-When a model can't fit onto a single accelerator or when it's more efficient to split the model across multiple accelerators even if it does fit but barely, the same [Model Parallelism techniques](../training/model-parallelism) from training apply to inference.
+[Deepspeed FastGen](https://github.com/microsoft/DeepSpeed/tree/master/blogs/deepspeed-fastgen) 是 DeepSpeed 团队开发的用于大型语言模型（LLM）的推理系统框架。
 
+最新进展：[Update #1](https://github.com/microsoft/DeepSpeed/tree/master/blogs/deepspeed-fastgen#update--january-19-2024)
 
+论文：[DeepSpeed-FastGen: High-Throughput Text Generation for LLMs via MII and DeepSpeed-Inference](https://arxiv.org/abs/2401.08671)
 
-## Inference frameworks
+#### 动态分割融合（Dynamic SplitFuse）
 
-
-### DeepSpeed-FastGen
-
-[DeepSpeed-FastGen](https://github.com/microsoft/DeepSpeed/tree/master/blogs/deepspeed-fastgen) is an inference system framework for large language models (LLMs) from the DeepSpeed team.
-
-[Updates](https://github.com/microsoft/DeepSpeed/tree/master/blogs/deepspeed-fastgen/2024-01-19).
-
-paper: [DeepSpeed-FastGen: High-throughput Text Generation for LLMs via MII and DeepSpeed-Inference](https://arxiv.org/abs/2401.08671)
-
-
-#### Dynamic SplitFuse
-
-[Dynamic SplitFuse](https://github.com/microsoft/DeepSpeed/tree/master/blogs/deepspeed-fastgen#b-dynamic-splitfuse-) leverages dynamic prompt and generation decomposition and unification to improve continuous [batching](#batching) and system throughput.
-
-
-
-
+[Dynamic SplitFuse](https://github.com/microsoft/DeepSpeed/tree/master/blogs/deepspeed-fastgen#b-dynamic-splitfuse-) 利用动态提示分解和统一机制来优化连续批处理和系统吞吐量。
 
 ### vLLM
 
 [vLLM](https://github.com/vllm-project/vllm)
 
-
-
-
-
 ### TensorRT-LLM
 
-[TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM) (also integrated what used to be `FasterTransformer`)
-
-
-
+[TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM)（以前名为 FasterTransformer，现已合并至 TensorRT-LLM 中）
 
 ### TGI
 
-
-
-
 ### Orca
 
-[Orca: A Distributed Serving System for Transformer-Based Generative Models](https://www.usenix.org/conference/osdi22/presentation/yu) - C++ inference engine based on NVIDIA's `FasterTransformer` as the generation/execution engine (it looks like `FasterTransformer` got folded into [TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM).
+[Orca: A Distributed Serving System for Transformer-Based Generative Models](https://www.usenix.org/conference/osdi22/presentation/yu) - 这是一个由 C++ 编写的推理引擎，基于 NVIDIA 的 FasterTransformer 作为执行引擎（看起来 FasterTransformer 现在已经集成到了 [TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM) 中）。
 
-
-## Inference Chips
+## 推断芯片（Inference Chips）
 
 ### Groq
 
 - [Groq](https://groq.com/)
+

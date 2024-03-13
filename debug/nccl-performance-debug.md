@@ -1,186 +1,79 @@
-# NCCL: Debug and Performance
+# NCCL：调试与性能优化笔记
 
-Notes for debugging NCCL-based software and tuning it up for the peak performance
+关于如何调试基于NCCL的软件以及如何将其性能调优至最佳状态的指南。
 
+## NCCL环境变量
 
+完整的列表可以在[这里](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/env.html)找到，但其中许多变量已经不再使用。以下是一些在调试NCCL相关问题时最有用的变量：
 
+### 调试相关的环境变量
 
-## NCCL Environment Variables
-
-The full list can be found [here](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/env.html). That list is long but many of those variables are no longer in use.
-
-
-### Debug Environment Variables
-
-The following env vars are most useful during debugging NCCL-related issues such as hanging and crashing.
-
+以下环境变量对于调试诸如挂起和崩溃等NCCL相关问题非常有用：
 
 #### `NCCL_DEBUG`
 
-This is the most commonly used env var to debug networking issues.
+这是最常用于调试网络问题的环境变量。它的值可以是：
+- `VERSION`: 在程序启动时打印NCCL版本信息。
+- `WARN`: 当任何NCCL调用发生错误时，打印明确的警告消息。
+- `INFO`: 输出调试信息。
+- `TRACE`: 输出可重放的跟踪信息，包括每个调用的详细信息。
 
-Values:
-- `VERSION` - Prints the NCCL version at the start of the program.
-- `WARN` - Prints an explicit error message whenever any NCCL call errors out.
-- `INFO` - Prints debug information
-- `TRACE` - Prints replayable trace information on every call.
-
-For example:
-
+例如：
 ```bash
 NCCL_DEBUG=INFO python -m torch.distributed.run --nproc_per_node 2 --nnodes 1 torch-distributed-gpu-test.py
 ```
-
-This will dump a lot of NCCL-related debug information, which you can then search online if you find that some problems are reported.
-
-And `NCCL_DEBUG_FILE` should be very useful when using `NCCL_DEBUG` as the information is copious especially if using many nodes.
-
-
+这将产生大量的NCCL相关的调试信息，您可以通过在线搜索这些信息来查找可能的问题报告。此外，结合使用`NCCL_DEBUG_FILE`可以更有效地处理大量日志信息。
 
 #### `NCCL_DEBUG_FILE`
 
-When using `NCCL_DEBUG` env var, redirect all NCCL debug logging output to a file.
-
-The default is `stdout`. When using many GPUs it can be very useful to save each process' debug info into its own log file, which can be done like so:
-
+当使用`NCCL_DEBUG`环境变量时，将所有NCCL调试日志输出重定向到文件中。默认情况下，日志会输出到标准输出（`stdout`）。如果使用了多个GPU，那么保存每个进程的调试信息到单独的日志文件中是非常有帮助的，这可以通过设置如下环境变量来实现：
 ```
 NCCL_DEBUG_FILE=/path/to/nccl-log.%h.%p.txt
 ```
+在这个命令中：
+- `%h`会被替换为主机名；
+- `%p`会被替换为进程的PID。
 
-- `%h` is replaced with the hostname
-- `%p` is replaced with the process PID.
-
-If you then need to analyse hundreds of these at once, here are some useful shortcuts:
-
-- grep for a specific match and also print the file and line number where it was found:
-
+如果您需要分析数百个这样的日志文件，可以使用以下有用的小技巧：
+- 通过特定的匹配项进行搜索并同时打印出该匹配是在哪个文件和哪一行被发现的：
 ```
 grep -n "Init COMPLETE" nccl-log*
 ```
-
-- show `tail -1` of all nccl log files followed by the name of each file
-
+- 显示所有`nccl*`日志文件的末尾行，并跟随每条记录对应的文件名：
 ```
 find . -name "nccl*" -exec sh -c 'echo "$(tail -1 "$1") ($1)"' _ {} \;
 ```
+#### `NCCL_DEBUG_SUBSYSTEM`
 
-
-
-#### `NCCL_DEBUG_SUBSYS`
-
-`NCCL_DEBUG_SUBSYS` used in combination with `NCCL_DEBUG` tells the latter which subsystems to show. Normally you don't have to specify this variable, but sometimes the developers helping you may ask to limit the output to only some sub-systems, for example:
-
+`NCCL_DEBUG_SUBSYSTEM`与`NCCL_DEBUG`一起使用，用来指定哪些子系统应该被显示。通常不需要显式地设置这个变量，但是有时开发人员可能会要求限制输出以仅包含某些子系统的信息，例如：
 ```
-NCCL_DEBUG_SUBSYS=INIT,GRAPH,ENV,TUNING
+NCCL_DEBUG_SUBSYSTEM=INIT,GRAPH,ENV,TUNING
 ```
-
-
-
 #### `NCCL_P2P_DISABLE`
 
-Disables P2P comms - e.g. NVLink won't be used if there is one and the performance will be much slower as a result of that.
-
+禁用点对点通信——即使存在NVLink，也不会使用它。这将导致性能显著下降。
 
 #### `NCCL_SOCKET_IFNAME`
 
-This one is very useful if you have multiple network interfaces and you want to choose a specific one to be used.
-
-By default NCCL will try to use the fastest type of an interface, which is typically `ib` (InfiniBand).
-
-But say you want to use an Ethernet interface instead then you can override with:
-
+如果您有多张网卡并且想要选择特定的一张用于通信，这个环境变量就非常实用了。默认情况下，NCCL会尝试使用最快类型的接口，通常是`ib`（Infiniband）。但如果您想使用以太网接口，您可以覆盖此行为：
 ```
 NCCL_SOCKET_IFNAME=eth
 ```
+这个环境变量在遇到网络连接性问题时也很有用，比如某个接口被防火墙阻止而其他未受影响的情况，或者不确定问题是来自网络接口还是其他地方的情况下，测试其他接口可以帮助排除网络方面的可能性。
 
-This env var can be used at times to debug connectivity issues, if say one of the interfaces is firewalled, and perhaps the others aren't and can be tried instead. Or if you are not sure whether some problem is related to the network interface or something else, so it helps to test other interfaces to invalidate that the issue comes from network.
+### 与性能相关的环境变量
 
-
-### Performance-Oriented Environment Variables
-
-The following env vars are used primarily to tune up performance.
-
+以下环境变量主要用于调整性能：
 
 #### `NCCL_ALGO`
 
-This one defines which algorithms NCCL will use. Typically it's one of:
+这个变量定义了NCCL使用的算法。通常可以选择的有：
+1. 树形结构（Tree）；
+2. 环形结构（Ring）；
+3. 聚合直接和链式（IB SHARP）；
+4. NVIDIA Link Speed（NVLink SHARP）（新）。
 
-1. Tree
-2. Ring
-3. CollnetDirect and CollnetChain (IB SHARP)
-4. NVLS (NVLink SHARP)
+我之前询问过用户是否能够自行优化，得到的回答是NCCL内部拥有众多智能算法，它们会在不同场景下自动切换以达到最优性能，因此用户无需手动干预。开发者建议不要试图优化任何东西，因为NCCL已经在很大程度上实现了自适应和高效。
 
-I was asking questions about how a user can do the optimization and was told at [this NCCL Issue](https://github.com/NVIDIA/nccl/issues/790) that basically the user shouldn't try to optimize anything as NCCL has a ton of smart algorithms inside that will try to automatically switch from one algorithm to another depending on a concrete situation.
-
-Sylvain Jeaugey shared:
-
-> There used to be a static threshold, but it's been replaced by a more complex tuning system. The new system builds a model of the latency and bandwidth of each algorithm/protocol combination (that's many, many combinations) and decides which one should perform best depending on the size. So there is no longer an env var and a static value, which is good because the performance of each algorithm depends on the number of nodes and number of GPUs per node and therefore we need to navigate a 2D space of algo/protocols which isn't easy. You can always force one algorithm with `NCCL_ALGO=TREE` and `NCCL_ALGO=RING` and see what performance you get and whether NCCL switches at the right point. I know it's hard to understand, but it's also the best solution we found to have the best performance across all platforms and users without users having to manually tune the switch points. Downside is, if you want to manually tune things, you can't.
-
-If you use `NCCL_ALGO` you need to list the algorithms to consider, but otherwise you have no control over it. So, really, this is only useful if you want to make sure that one of the algorithms isn't used.
-
-When asking about which algorithm is better, I received:
-
-> Roughly speaking, ring is superior in terms of peak bandwidth (except on 2 nodes), tree is superior in terms of base latency (especially as we scale). `Bandwidth = Size / Time`, so whether you look at the time or the bandwidth for a given size, it will be a combination of both the peak bandwidth and the base latency. For a fixed size, as you scale, the base latency of ring will become prevalent and tree will be better.
-
-There is also a new algo, named `NVLS`, which if NVLink SHARP is available will run faster than NVLink itself, e.g. with NVLink 4.0 (450GBps) one can clock 480GBps doing all-reduce benchmarks. They are working on the inter-node version of that which [requires IB or RoCE](https://github.com/NVIDIA/nccl/issues/1031#issuecomment-1773965518) - this new algo is not documented anywhere as of this writing.
-
-And finally, if you would like to know which algo is being used - you can't - see [this answer](https://github.com/NVIDIA/nccl/issues/754#issuecomment-1346163469). So if you want to know which algo gives which throughput you will have to try them all explicitly by setting `NCCL_ALGO` env var and then you'd know which one was chosen. Or you can edit and recompile NCCL as suggested in that same answer, but you won't want this in production.
-
-
-#### `NCCL_CROSS_NIC`
-
-The `NCCL_CROSS_NIC` variable controls whether NCCL should allow rings/trees to use different NICs, causing inter-node communication to use different NICs on different nodes.
-
-To maximize inter-node communication performance when using multiple NICs, NCCL tries to communicate between same NICs between nodes, to allow for network design where each NIC from each node connects to a different network switch (network rail), and avoid any risk of traffic flow interference. The NCCL_CROSS_NIC setting is therefore dependent on the network topology, and in particular depending on whether the network fabric is rail-optimized or not.
-
-This has no effect on systems with only one NIC.
-
-Values accepted:
-
-- 0: Always use the same NIC for the same ring/tree, to avoid crossing network rails. Suited for networks with per NIC switches (rails), with a slow inter-rail connection. Note there are corner cases for which NCCL may still cause cross-rail communication, so rails still need to be connected at the top.
-- 1: Do not attempt to use the same NIC for the same ring/tree. This is suited for networks where all NICs from a node are connected to the same switch, hence trying to communicate across the same NICs does not help avoiding flow collisions.
-- 2: (Default) Try to use the same NIC for the same ring/tree, but still allow for it if it would result in better performance.
-
-
-### Extrapolating benchmarks from several nodes to many
-
-As it's often not easy to benchmark hundreds of nodes, often we try to benchmark interconnect performance using, say, 4 nodes. I wasn't sure whether this would give the correct indication for when 40 or 400 nodes will be used so I asked about it [here](https://github.com/NVIDIA/nccl/issues/790) and the answer was:
-
-> Extrapolating at scale is not that hard for ring and tree (we have a function in `tuning.cc` predicting it, based on the ring linear latency and the tree log latency with reduced BW). Now as you scale, there are many factors which may cause your real performance to be very far off the prediction, like routing. Also note on an IB network you'll be able to use SHARP; that way your latency stays mostly constant as you scale, your bandwidth doesn't degrade much either, and you're always better than both ring and tree.
-
-
-### Counting NCCL calls
-
-Enable NCCL debug logging for subsystems - collectives:
-```
-export NCCL_DEBUG=INFO
-export NCCL_DEBUG_SUBSYS=COLL
-```
-
-if you're working in a slurm environment with many nodes you probably want to perform this only on rank 0, like so:
-```
-if [[ $SLURM_PROCID == "0" ]]; then
-  export NCCL_DEBUG=INFO
-  export NCCL_DEBUG_SUBSYS=COLL
-fi
-```
-
-Assuming your logs were all sent to `main_log.txt`, you can then count how many of each collective call were performed with:
-```
-grep -a "NCCL INFO Broadcast" main_log.txt     | wc -l
-2590
-grep -a "NCCL INFO AllReduce" main_log.txt     | wc -l
-5207
-grep -a "NCCL INFO AllGather" main_log.txt     | wc -l
-1849749
-grep -a "NCCL INFO ReduceScatter" main_log.txt | wc -l
-82850
-```
-
-It might be a good idea to first isolate a specific stage of the training, as loading and saving will have a very different pattern from training iterations.
-
-So I typically first slice out one iteration. e.g. if each iteration log starts with: `iteration: ...` then I'd first do:
-```
-csplit main_log.txt '/iteration: /' "{*}"
-```
-and then analyse one of the resulting files that correspond to the iterations. By default it will be named something like `xx02`.
+Sylvain Jeaugey分享了一些见解：
+> 曾经有一个静态阈值，但它已经被一个更加复杂的调优系统所取代。新的系统构建了一个模型，根据大小预测每种算法/协议组合的延迟和带宽。然后决定哪种算法应该在给定的大小下表现最好。所以现在没有固定的环境变量和一个静态值，这对于跨所有平台和用户的最佳性能来说是一个更好的解决方案。缺点是你不能手动调优，如果你想这样做，你做不到。

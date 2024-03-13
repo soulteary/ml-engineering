@@ -1,13 +1,11 @@
-# Working in SLURM Environment
+在 SLURM 环境中工作
+除非您非常幸运，拥有一个完全由您控制的专用集群，否则您可能需要在与其他用户共享 GPU 的 SLURM 中进行时间调度。即使您在 HPC 上培训并且被分配了一个专用分区，您仍然需要使用 SLURM。
 
-Unless you're lucky and you have a dedicated cluster that is completely under your control chances are that you will have to use SLURM to timeshare the GPUs with others. But, often, if you train at HPC, and you're given a dedicated partition you still will have to use SLURM.
+SLURM 是 Simple Linux Utility for Resource Management（资源管理）的缩写，现在被称为 The Slurm Workload Manager。它是一个免费的开源作业调度程序，适用于 Linux 和类 UNIX 内核，许多世界超级计算机和计算机集群都使用了这个工具。
 
-The SLURM abbreviation stands for: **Simple Linux Utility for Resource Management** - though now it's called
-The Slurm Workload Manager. It is a free and open-source job scheduler for Linux and Unix-like kernels, used by many of the world's supercomputers and computer clusters.
+本章节不会试图彻底教您如何使用 SLURM，因为已经有大量的手册可供参考，而是将涵盖一些有助于训练过程的有用特定细节。
 
-These chapters will not try to exhaustively teach you SLURM as there are many manuals out there, but will cover some specific nuances that are useful to help in the training process.
-
-- [SLURM For Users](./users.md) - everything you need to know to do your training in the SLURM environment.
-- [SLURM Administration](./admin.md) - if you're unlucky to need to also manage the SLURM cluster besides using it, there is a growing list of recipes in this document to get things done faster for you.
-- [Performance](./performance.md) - SLURM performance nuances.
-- [Launcher scripts](./launchers) - how to launch with `torchrun`, `accelerate`, pytorch-lightning, etc. in the SLURM environment
+- [SLURM 对用户](./users.md) —— 在 SLURM 环境中进行培训所需了解的一切。
+- [SLURM 管理](./admin.md) —— 如果不幸的是除了使用之外，您还需要管理 SLURM 集群，那么这份不断增长的食谱列表可以帮助您更快地完成任务。
+- [性能](./performance.md) —— SLURM 的性能细微差别。
+- [启动器脚本](./launchers) —— 在 SLURM 环境中使用 torchrun、加速器、pytorch-lightning 等来启动作业的方法。

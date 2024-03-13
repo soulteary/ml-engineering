@@ -1,28 +1,27 @@
-# Troubleshooting NVIDIA GPUs
+# 解决 NVIDIA GPU 问题
 
-## Xid Errors
+## Xid 错误
 
-No hardware is perfect, sometimes due to the manufacturing problems or due to tear and wear (especially because of exposure to high heat), GPUs are likely to encounter various hardware issues. A lot of these issues get corrected automatically without needing to really understand what's going on. If the application continues running usually there is nothing to worry about. If the application crashes due to a hardware issue it's important to understand why this is so and how to act on it.
+硬件设备并非完美无瑕，由于制造缺陷或长期使用（尤其是在高温环境下）导致的磨损，GPU 可能会遇到各种硬件问题。虽然许多问题可以自动修复而无需深入了解其原因，但如果应用程序因此崩溃，了解问题的根源并采取适当的措施至关重要。
 
-A normal user who uses a handful of GPUs is likely to never need to understand GPU-related hardware issues, but if you come anywhere close to massive ML training where you are likely to use hundreds to thousands of GPUs it's certain that you'd want to understand about different hardware issues.
+对于普通用户来说，如果只使用了少量 GPU，可能永远不需要理解与 GPU 相关的硬件问题。但是，如果您参与大规模的机器学习训练，可能会用到数百甚至数千个 GPU，那么理解和处理不同类型的硬件问题是必不可少的。
 
-In your system logs you are likely to see occasionally Xid Errors like:
+在您的系统日志中，您可能会偶尔看到类似于以下内容的 Xid 错误：
 
 ```
 NVRM: Xid (PCI:0000:10:1c): 63, pid=1896, Row Remapper: New row marked for remapping, reset gpu to activate.
 ```
 
-To get those logs one of the following ways should work:
+要查看这些日志，可以使用以下命令之一：
 ```
 sudo grep Xid /var/log/syslog
 sudo dmesg -T | grep Xid
 ```
+通常情况下，只要训练没有中断，这些错误往往表明硬件问题已经得到自动纠正。
 
-Typically, as long as the training doesn't crash, these errors often indicate issues that automatically get corrected by the hardware.
+Xid 错误的完整列表及其解释可以在 Nvidia 的官方文档中找到：[Xid 错误参考](https://docs.nvidia.com/deploy/xid-errors/index.html)。
 
-The full list of Xid Errors and their interpretation can be found [here](https://docs.nvidia.com/deploy/xid-errors/index.html).
-
-You can run `nvidia-smi -q` and see if there are any error counts reported. For example, in this case of Xid 63, you will see something like:
+可以通过运行 `nvidia-smi -q` 来检查是否有任何报告的错误计数：
 
 ```
 Timestamp                                 : Wed Jun  7 19:32:16 2023
@@ -61,24 +60,18 @@ GPU 00000000:10:1C.0
             None                          : 0 bank(s)
 [...]
 ```
-
-Here we can see that Xid 63 corresponds to:
+在这里，我们可以看到 Xid 63 与以下内容相关联：
 
 ```
 ECC page retirement or row remapping recording event
 ```
+这可能有三种原因：硬件错误、驱动程序错误或帧缓冲区（FB）损坏。这个错误意味着内存的一个行出现了故障，需要在重启和/或显卡重置时使用备用内存行进行替换。从上面的报告中可以看出，只有 639 个银行可用（总共 640 个）。
 
-which may have 3 causes: HW Error / Driver Error / FrameBuffer (FB) Corruption
+`ECC Errors` 部分的 `Volatile` 和 `Aggregate` 部分分别记录了自上次重启/显卡重置以来的错误数量以及自从开始使用该 GPU 以来的总错误数量。
 
-This error means that one of the memory rows is malfunctioning and that upon either reboot and/or a gpu reset one of the 640 spare memory rows (in A100) will be used to replace the bad row. Therefore we see in the report above that only 639 banks remain (out of 640).
+有两种类型的错误——可纠正的和不可纠正的。可纠正的是单比特 ecc 错误（SBE），尽管内存有缺陷，但驱动程序仍然能够恢复正确的值。不可纠正的是双比特 ecc 错误（DBE），在这种情况下，驱动程序会退休整个内存页面，因为在一个内存地址上发生了不止一个比特的错误。关于详细信息，请参阅[这份文档](https://docs.nvidia.com/deploy/dynamic-page-retirement/index.html)。
 
-The Volatile section of the `ECC Errors` report above refers to the errors recorded since last reboot/GPU reset. The Aggregate section records the same error since the GPU was first used.
-
-Now, there are 2 types of errors - Correctable and Uncorrectable. The correctable one is a Single Bit ECC Error (SBE) where despite memory being faulty the driver can still recover the correct value. The uncorrectable one is where more than one bit is faulty and it's called Double Bit ECC Error (DBE). Typically, the driver will retire whole memory pages if 1 DBE or 2 SBE errors occur at the same memory address. For full information see [this document](https://docs.nvidia.com/deploy/dynamic-page-retirement/index.html)
-
-A correctable error will not impact the application, a non-correctable one will crash the application. The memory page containing the uncorrectable ECC error will be blacklisted and not accessible until the GPU is reset.
-
-If there are page scheduled to be retired you will see something like this in the output of `nvidia-smi -q`:
+如果存在计划退休的页面，输出将类似这样：
 
 ```
     Retired pages
@@ -86,38 +79,33 @@ If there are page scheduled to be retired you will see something like this in th
         Double Bit ECC             : 0
         Pending Page Blacklist    : Yes
 ```
+每个退役的页面都会减少可用于应用的内存总量。但由于每个页面的容量仅为 4 MB，它不会显著降低总的可用 GPU 内存。
 
-Each retired page decreases the total memory available to applications. But each page is only 4MB large, so it doesn't reduce the total available GPU memory by much.
+为了更深入地调试 GPU，请参阅[此文档](https://docs.nvidia.com/deploy/gpu-debug-guidelines/index.html)，其中包含了一个有助于确定何时需要更换 GPU 的故障排除图表。该文档还提供了有关 Xid 63 样错误的信息。例如，它建议：
 
-To dive even deeper into the GPU debugging, please refer to [this document](https://docs.nvidia.com/deploy/gpu-debug-guidelines/index.html) - it includes a useful triage chart which helps to determine when to RMA GPUs. This document has additional information about Xid 63-like errors
+> 如果与 XID 94 关联，则需要重新启动遇到错误的应用程序。所有其他系统上的应用程序都可以继续正常运行，直到方便的时候再重启以激活内存映射。
+> 根据内存映射失败的情况，以下是一些关于何时应考虑更换 GPU 的指南。
 
-For example it suggests:
+如果在重启后相同的条件再次出现于相同的内存地址，这意味着内存映射尝试失败，并且 Xid 64 将再次被触发。如果这种情况持续发生，说明存在无法通过软件手段解决的硬件问题，需要更换 GPU。
 
-> If associated with XID 94, the application that encountered the error needs to be restarted. All other applications on the system can keep running as is until there is a convenient time to reboot for row remapping to activate.
-> See below for guidelines on when to RMA GPUs based on row remapping failures.
+在其他时候，您可能会收到 Xid 63 或 64 错误，导致应用程序崩溃。这可能还会生成额外的 Xid 错误，但在大多数情况下，这意味着错误是不可纠正的（即它是某种 DBE 类型的错误，然后会出现 Xid 48 等错误）。
 
-If after a reboot the same condition occur for the same memory address, it means that memory remapping has failed and Xid 64 will be emitted again. If this continues it means you have a hardware issue that can't be auto-corrected and the GPU needs to RMA'ed.
-
-At other times you may get Xid 63 or 64 and the application will crash. Which usually will generate additional Xid errors, but most of the time it means that the error was uncorrectable (i.e. it was a DBE sort of an error and then it'll be Xid 48).
-
-As mentioned earlier to reset a GPU you can either simply reboot the machine, or run:
+如前所述，可以通过以下方式重置 GPU：
 
 ```
 nvidia-smi -r -i gpu_id
 ```
+其中 `gpu_id` 是您想要重置的 GPU 的序号。不带 `-i` 选项的所有 GPU 都将被重置。
 
-where `gpu_id` is the sequential number of the gpu you want to reset. Without `-i` all GPUs will be reset.
+## 执行诊断
 
-## Running diagnostics
+如果您怀疑某个节点上的一个或多个人工智能计算公司 NVIDIA GPU 有故障，`dcgmi` 是一个非常强大的工具，可以帮助快速查找故障 GPU。
 
-If you suspect one or mode NVIDIA GPUs are broken on a given node, `dcgmi` is a great tool to quickly find any bad GPUs.
+NVIDIA®数据中心GPU管理器（DCGM）[在此处文档化](https://docs.nvidia.com/datacenter/dcgm/latest/user-guide/index.html)，可以从[此处下载](https://github.com/NVIDIA/DCGM#quickstart)。
 
-NVIDIA® Data Center GPU Manager (DCGM) is documented [here](https://docs.nvidia.com/datacenter/dcgm/latest/user-guide/index.html) and can be downloaded from [here](https://github.com/NVIDIA/DCGM#quickstart).
+这里有一个示例 Slurm 脚本，用于运行非常详细的诊断（级别为 3），大约需要 10 分钟才能完成：
 
-Here is an example slurm script that will run very in-depth diagnostics (`-r 3`), which will take about 10 minutes to complete on an 8-GPU node:
-
-```
-$ cat dcgmi-1n.slurm
+```shell
 #!/bin/bash
 #SBATCH --job-name=dcgmi-1n
 #SBATCH --nodes=1
@@ -132,26 +120,23 @@ echo "START TIME: $(date)"
 srun --output=%x-%j-%N.out dcgmi diag -r 3
 echo "END TIME: $(date)"
 ```
-
-Now to run it on specific nodes of choice:
-```
+现在，要在特定节点上运行它：
+```shell
 sbatch --nodelist=node-115 dcgmi-1n.slurm
 sbatch --nodelist=node-151 dcgmi-1n.slurm
 sbatch --nodelist=node-170 dcgmi-1n.slurm
 ```
-edit the nodelist argument to point to the node name to run.
+编辑 nodelist 参数以指向要运行的节点名称。
 
-If the node is drained or downed and you can't launch a slurm job using this node, just ssh into the node and run the command directly on the node:
-```
+如果节点处于维护状态或已下线且您无法通过 Slurm 作业启动它，只需 SSH 到节点并在那里直接运行命令：
+```shell
 dcgmi diag -r 3
 ```
-If the diagnostics didn't find any issue, but the application still fails to work, re-run the diagnostics with level 4, which will now take more than 1 hour to complete:
-```
+如果诊断未发现任何问题，但应用程序仍无法工作，您可以再次运行诊断，这次使用级别 4，这将花费超过一小时的时间来完成：
+```shell
 dcgmi diag -r 4
 ```
-
-
-For example, if you run into a repeating Xid 64 error it's likely that the diagnostics report will include:
+例如，如果您遇到重复出现的 Xid 64 错误，诊断报告可能包括以下内容：
 
 ```
 +---------------------------+------------------------------------------------+
@@ -161,23 +146,20 @@ For example, if you run into a repeating Xid 64 error it's likely that the diagn
 | Error                     | GPU 3 has uncorrectable memory errors and row  |
 |                           |  remappings are pending                        |
 ```
+此时，您知道应该对有问题的 GPU 提交 RMA 请求，如果内存映射失败。
 
-so you now know to RMA that problematic GPU, if remapping fails.
+`dcgmi` 工具包含了多种级别的诊断，有些可以在几分钟内完成，适合作为 SLURM 作业的后记快速执行，以确保节点准备好为下一个 SLURM 任务服务，而不是在用户已经开始他们的任务并发现它崩溃之后才发现问题。
 
-The `dcgmi` tool contains various other levels of diagnostics, some of which complete in a matter of a few minutes and can be run as a quick diagnostic in the epilogue of SLURM jobs to ensure that the node is ready to work for the next SLURM job, rather than discovering that after the user started their job and it crashed.
-
-When filing an RMA report you will be asked to run `nvidia-bug-report` script, the output of which you will need to submit with the RMA request.
-
-I usually save the log as well for posterity using one of:
-```
+当您准备提交一份 RMA 报告时，会被要求运行 `nvidia-bug-report` 脚本来收集相关信息，以便随 RMA 请求一起提交。我通常会将日志保存下来以备将来参考，使用以下命令之一：
+```shell
 dcgmi diag -r 3 | tee -a dcgmi-r3-`hostname`.txt
 dcgmi diag -r 4 | tee -a dcgmi-r4-`hostname`.txt
 ```
-## How to detect if a node is missing GPUs
+## 如何检测节点是否缺少 GPU
 
-If you got a new VM, there are odd cases where there is less than expected number of GPUs. Here is how you can quickly test you have got 8 of them:
+如果您刚刚创建了一个新的虚拟机实例，有时可能会出现实际拥有的 GPU 数量少于预期的情况。下面是如何快速测试您是否确实拥有预期的 8 个 GPU：
 
-```
+```shell
 cat << 'EOT' >> test-gpu-count.sh
 #!/bin/bash
 
@@ -187,24 +169,20 @@ set -e
 test $(nvidia-smi -q | grep UUID | wc -l) != 8 && echo "broken node: less than 8 gpus" && false
 EOT
 ```
-and then:
-
-```
+然后运行：
+```shell
 bash test-gpu-count.sh
 ```
 
+## 如何检测是否总是分配到同一个坏节点
 
-## How to detect if you get the same broken node again and again
+这对于云用户尤为重要，他们租用 GPU 节点。所以你启动了一个新虚拟机实例，却发现它有一些或者全部的 NVIDIA GPU 坏了。你丢弃了这个实例并启动一个新的，结果还是遇到了同样的问题。
 
-This is mostly relevant to cloud users who rent GPU nodes.
+很可能你一直在接收同一台带有同样坏 GPU 的节点。这里是怎样去确认这一点。
 
-So you launched a new virtual machine and discovered it has one or more broken NVIDIA GPUs. You discarded it and launched a new and the GPUs are broken again.
+在你丢弃当前节点之前，记录如下：
 
-Chances are that you're getting the same node with the same broken GPUs. Here is how you can know that.
-
-Before discarding the current node, run and log:
-
-```
+```shell
 $ nvidia-smi -q | grep UUID
     GPU UUID                              : GPU-2b416d09-4537-ecc1-54fd-c6c83a764be9
     GPU UUID                              : GPU-0309d0d1-8620-43a3-83d2-95074e75ec9e
@@ -215,23 +193,21 @@ $ nvidia-smi -q | grep UUID
     GPU UUID                              : GPU-213fa750-652a-6cf6-5295-26b38cb139fb
     GPU UUID                              : GPU-52c408aa-3982-baa3-f83d-27d047dd7653
 ```
+这些 UUID 是每块 GPU 的唯一标识符。
 
-These UUIDs are unique to each GPU.
+当你下次又创建了一个新的 VM 实例时，再次运行同样的命令，如果得到的 UUID 是一样的，你就知道你得到了同一个坏的 GPU。
 
-When you then re-created your VM, run this command again - if the UUIDs are the same - you know you have the same broken GPUs.
+为了自动化这个过程，使得每次都有这样的数据，因为你可能在丢弃实例后再也来不及获取这些信息，你可以将其添加到你启动流程中的某一部分：
 
-To automate this process so that you always have this data as it'd be too late if you already rebooted the VM, add somewhere in your startup process this:
-
-```
+```shell
 nvidia-smi -q | grep UUID > nvidia-uuids.$(hostname).$(date '+%Y-%m-%d-%H:%M').txt
 ```
+确保将日志保存在持久性文件系统中，以便它们能在重启后存活。如果没有这样的系统，可以将日志保存在本地并立即复制到云端。这样，无论什么时候你需要，它们都将会存在。
 
-You'd want to save the log file on some persistent filesystem for it to survive reboot. If you do not have one make it local and immediately copy to the cloud. That way it'll always be there when you need it.
+有时候只是重启一下节点就会获得新的硬件。而在某些情况下，几乎每一次重启都会有新的硬件。这种行为在不同供应商之间可能会有所不同。
 
-Sometimes just rebooting the node will get new hardware. In some situations you get new hardware on almost every reboot, in other situations this doesn't happen. And this behavior may change from one provider to another.
+如果你不断地得到同一个坏节点，一个技巧是先分配一个新的 VM，同时保持旧的坏节点在线，然后在新的 VM 上运行完毕后丢弃旧的坏节点。这样可以保证你总能得到新的硬件——除了不能保证它们不会有问题。如果你的用例允许这样做，可以考虑购买静态集群，在那里更容易保持良好的硬件。
 
-If you keep on getting the same broken node - one trick to overcoming this is allocating a new VM, while holding the broken VM running and when the new VM is running - discarding the broken one. That way you will surely get new GPUs - except there is no guarantee they won't be broken as well. If the use case fits consider getting a static cluster where it's much easier to keep the good hardware.
+云提供商通常都有一个机制来报告坏掉的节点。因此，除了丢弃一个坏节点之外，帮助你自己和其他用户并向云提供商报告坏节点是有益的。由于大多数用户只是丢弃坏节点，技术人员可能不会立即注意到问题并将坏节点放回循环中。因此，如果您不是在使用静态集群并且在按需获取随机 VM 的情况下，你可能希望始终保留一份坏 UUID 的日志，以便在第一时间就知道你拿到了柠檬而不是在十个小时的使用后才意识到问题。
 
-This method is extra-crucial for when GPUs don't fail right away but after some use so it is non-trivial to see that there is a problem. Even if you reported this node to the cloud provider the technician may not notice the problem right away and put the bad node back into circulation. So if you're not using a static cluster and tend to get random VMs on demand you may want to keep a log of bad UUIDs and know you have got a lemon immediately and not 10 hours into the node's use.
-
-Cloud providers usually have a mechanism of reporting bad nodes. Therefore other than discarding a bad node, it'd help yourself and other users to report bad nodes. Since most of the time users just discard the bad nodes, the next user is going to get them. I have seen users getting a very high percentage of bad nodes in some situations.
+云提供商通常有一个机制来报告坏节点。因此，除了丢弃一个坏节点外，向云提供商报告坏节点对自己和其他用户都是有帮助的。由于大多数用户只是丢弃坏节点，技术人员可能不会立即注意到问题并将坏节点放回循环中。因此，如果您不是在使用静态集群并且在按需获取随机 VM 的情况下，您可能希望始终保留一份坏 UUID 的日志，以便在第一时间就知道您收到了柠檬而不是在十个小时的使用后才意识到问题。

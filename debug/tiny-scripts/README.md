@@ -1,6 +1,4 @@
-# A Back up of scripts
-
-This is a backup of scripts discussed in [Faster debug and development with tiny models, tokenizers and datasets](../make-tiny-models-tokenizers-datasets.md).
+这是[《使用小型模型、Tokenizer和数据集实现更快的调试与开发》](../make-tiny-models-tokenizers-datasets.md)中讨论的脚本的备份。
 
 * [c4-en-10k.py](./c4-en-10k.py)
 * [cm4-synthetic-testing.py](./cm4-synthetic-testing.py)

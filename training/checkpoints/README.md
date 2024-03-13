@@ -1,5 +1,6 @@
-# Checkpoints
+# 检查点
 
-- [torch-checkpoint-convert-to-bf16](./torch-checkpoint-convert-to-bf16) - converts an existing fp32 torch checkpoint to bf16. If [safetensors](https://github.com/huggingface/safetensors/) are found those are converted as well. Should be easily adaptable to other similar use cases.
+- [`torch-checkpoint-convert-to-bf16`](./torch-checkpoint-convert-to-bf16) - 将现有的fp32 PyTorch检查点转换为bf16。如果找到[SafeTensors](https://github.com/huggingface/safetensors/)，也会对其进行转换。应该很容易适应其他类似的情况。
 
-- [torch-checkpoint-shrink.py](./torch-checkpoint-shrink.py) - this script fixes checkpoints which for some reason stored tensors with storage larger than their view at the moment of saving. It clones the current view and re-saves them with just the storage of the current view.
+- `torch-checkpoint-shrink.py` - 此脚本修复了由于某种原因存储的张量的大小大于保存时其视图大小的检查点。它克隆当前视图并重新保存它们，仅使用当前视图的存储。
+

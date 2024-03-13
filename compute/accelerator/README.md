@@ -1,404 +1,271 @@
-# Accelerators
+# 加速器
 
-Compute accelerators are the workhorses of the ML training. At the beginning there were just GPUs. But now there are also TPUs, IPUs, FPGAs, HPUs, QPUs, RDUs and more are being invented.
+计算加速器是机器学习训练中的工作马。最初只有GPU，但现在也有了TPU、IPU、FPGA、HPU、QPU、RDU等新型处理器不断被发明出来。
 
-There exist two main ML workloads - training and inference. There is also the finetuning workload which is usually the same as training, unless a much lighter [LORA-style](https://arxiv.org/abs/2106.09685) finetuning is performed. The latter requires significantly fewer resources and time than normal finetuning.
+存在两种主要的机器学习任务：训练和推理。还有一种微调任务，通常与训练相同，除非执行了一种轻量级的[LORA风格](https://arxiv.org/abs/2106.09685)的微调，这种微调需要显著较少的时间和资源。后者所需的资源和时间比正常的微调要少得多。
 
-In language models during inference the generation is performed in a sequence - one token at a time. So it has to repeat the same `forward` call thousands of times one smallish `matmul` (matrix multiplication or GEMM) at a time. And this can be done on either an accelerator, like GPU, or some of the most recent CPUs, that can handle inference quite efficiently.
+在语言模型中，推断过程以序列方式进行，一次生成一个令牌。这意味着需要在数千次小小的矩阵乘法（或GEMM）调用中重复相同的`前向`操作。这可以在加速器上完成，如GPU，也可以在一些最新的CPU上高效地完成。
 
-During training the whole sequence length is processed in one huge `matmul` operation. So if the sequence length is 4k long, the training of the same model will require a compute unit that can handle 4k times more operations than inference and do it fast. Accelerators excel at this task. In fact the larger the matrices they have to multiply, the more efficient the compute.
+在训练过程中，整个序列长度在一次巨大的矩阵乘法操作中被处理。如果序列长度为4千个单位，那么同样的模型的训练将需要能够处理至少4千倍于推断所需运算量的计算单元，并且速度也要足够快。加速器在这方面表现出色。事实上，矩阵越大，计算效率越高。
 
-The other computational difference is that while both training and inference have to perform the same total amount of `matmul`s in the `forward` pass, in the `backward` pass, which is only done for training, an additional 2x times of `matmul`s is done to calculate the gradients with regards to inputs and weights. And an additional `forward` is performed if activations recomputation is used. Therefore the training process requires at 3-4x more `matmul`s than inference.
+另一个重要的计算差异在于，虽然训练和推理都需要执行相同总量的矩阵乘法运算，但在仅用于训练的后向传播过程中，为了计算相对于输入和权重的梯度，还需要额外执行两倍的矩阵乘法运算。此外，如果在后向传播中使用了激活函数的重计算技术，还会额外执行一次`前向`操作。因此，训练过程需要的矩阵乘法运算量大约是推理的三到四倍。
 
-## Subsections
+## 小节
 
-- [Troubleshooting NVIDIA GPUs](nvidia/debug.md)
-
-
-## Bird's eye view on the high end accelerator reality
-
-While this might be changing in the future, unlike the consumer GPU market, as of this writing there aren't that many high end accelerators, and if you rent on the cloud, most providers will have more or less the same few accelerators to offer.
-
-GPUs:
-- As of today, ML clouds/HPCs started transitioning from NVIDIA A100s to H100s and this is going to take some months due to the usual shortage of NVIDIA GPUs.
-- AMD's MI250 started popping up here and there, but it's unclear when it'll be easy to access those. MI300X is promised to start being available already in March 2024 at some Tier 2 cloud providers.
-
-HPU:
-- Intel's Gaudi2 are starting to slowly emerge on Intel's cloud - there is a huge lineup. It's also available on-premises implementations via Supermicro, WiWynn, and soon others.
-
-IPU:
-- And there is Graphcore with their IPU offering. You can try these out in [Paperspace](https://www.paperspace.com/graphcore) through their cloud notebooks.
-
-TPU:
-- Google's TPUs are, of course, available but they aren't the most desirable accelerators because you can only rent them, and the software isn't quite easily convertible between GPUs and TPUs, and so many (most?) developers remain in the GPU land, since they don't want to be locked into a hardware which is a Google monopoly.
-
-On Pods and racks:
-- Cerebras' WaferScale Engine (WSE)
-- SambaNova's DataScale
-- dozens of different pod and rack configs that compose the aforementioned GPUs with super-fast interconnects.
-
-That's about it as Q1-2024.
+- [NVIDIA GPU故障排除](nvidia/debug.md)
 
 
-## Glossary
+## 对高端加速器的鸟瞰图
 
-- CPU: Central Processing Unit
-- FPGA: Field Programmable Gate Arrays
-- GCD: Graphics Compute Die
-- GPU: Graphics Processing Unit
-- HBM: High Bandwidth Memory
-- HPC: High-performance Computing
-- HPU: Habana Gaudi AI Processor Unit
-- IPU: Intelligence Processing Unit
-- MME: Matrix Multiplication Engine
-- QPU: Quantum Processing Unit
-- RDU: Reconfigurable Dataflow Unit
-- TPU: Tensor Processing Unit
+尽管未来可能会有所变化，但截至本文撰写时，市场上并没有太多的高端加速器选择，而且大多数云服务提供商提供的都是类似的几种加速器型号。
 
-## The most important thing to understand
+GPU：
+- 目前，机器学习和高性能计算环境正在从NVIDIA的A100过渡到H100，这一转换预计将在几个月内完成，因为NVIDIA的GPU供应仍然紧张。
+- AMD的MI250开始零星出现在一些地方，但其广泛可用性尚不清楚。MI300X承诺将于2024年3月开始在二级云供应商处提供。
 
-I will make the following statement multiple times in this book - and that it's not enough to buy/rent the most expensive accelerators and expect a high return on investment (ROI).
+HPU：
+- Intel的Gaudi2已经开始缓慢地在Intel的云平台上出现，它们有一个庞大的产品线。这些也在超大规模数据中心的内置环境中通过Supermicro和WiWynn等公司提供。
 
-The two metrics for a high ROI for ML training are:
-1. the speed at which the training will finish, because if the training takes 2-3x longer than planned, your model could become irrelevant before it was released - time is everything in the current super-competitive ML market.
-2. the total $$ spent to train the model, because if the training takes 2-3x longer than planned, you will end up spending 2-3x times more.
+IPU：
+- Graphcore提供了其IPU解决方案。您可以通过Paperspace的云笔记本尝试这些。
 
-Unless the rest of the purchased/rented hardware isn't chosen carefully to match the required workload chances are very high that the accelerators will idle a lot and both time and $$ will be lost. The most critical component is [network](../../network), then [storage](../../storage/), and the least critical ones are [CPU](../cpu) and [CPU memory](../cpu-memory) (at least for a typical training workload where any CPU limitations are compensated with multiple `DataLoader` workers).
+TPU：
+- Google的TPUs当然也是可用的，但由于只能租赁使用，且软件与其他硬件平台相比不太容易移植，许多（大多数？）开发人员仍留在GPU领域，因为他们不想被锁定在一个由谷歌垄断的硬件上。
 
-If the compute is rented one usually doesn't have the freedom to choose - the hardware is either set in stone or some components might be replaceable but with not too many choices. Thus there are times when the chosen cloud provider doesn't provide a sufficiently well matched hardware, in which case it's best to seek out a different provider.
+Pod和机架级别：
+- Cerebras的WaferScale Engine（WSE）
+- SambaNova的数据规模系统
+- 以及数十种不同的包含上述GPU和其他超级快的互连组件的pod和机架配置。
 
-If you purchase your servers then I recommend to perform a very indepth due diligence before buying.
-
-Besides hardware, you, of course, need software that can efficiently deploy the hardware.
-
-We will discuss both the hardware and the software aspects in various chapters of this book. You may want to start [here](../../training/performance) and [here](../../training/model-parallelism).
+这就是截至2024年第一季度的情况。
 
 
+## 词汇表
 
-## What Accelerator characteristics do we care for
+- CPU：中央处理器
+- FPGA：现场可编程门阵列
+- GCD：图形计算核心
+- GPU：图形处理器
+- HBM：高带宽内存
+- HPC：高性能计算
+- HPU：Habana Gaudi人工智能处理器单元
+- IPU：智能处理单元
+- MME：矩阵乘积引擎
+- QPU：量子处理器单元
+- RDU：可重构数据流单元
+- TPU：张量处理器单元
 
-Let's use the NVIDIA A100 spec as a reference point in the following sections.
+## 我们需要理解的最重要的事情
+
+我将多次在本书中提出以下观点——仅仅购买/租用最昂贵的加速器并不足以确保获得高的投资回报率（ROI）。
+
+衡量ML培训中高ROI的两个关键指标是：
+1. 训练完成的速度，因为在竞争激烈的ML市场中，如果训练时间超出计划的两三倍，您的模型可能会在发布之前变得过时——时间就是一切。
+2. 训练模型总共花费的钱，因为如果训练时间超出计划的两三倍，你将会多花两三倍的费用。
+
+如果不仔细匹配工作负载的需求，即使购买了/租用了性能最好的硬件，也可能会导致大量的时间和金钱损失。最关键的部分是网络，其次是存储，而CPU和CPU内存则是影响最小的部分（对于典型的培训工作负载来说，任何CPU限制都可以通过多个`DataLoader`工作者来补偿）。
+
+如果您是在云端租用计算资源，通常没有自由选择硬件的权利，硬件要么已经确定，要么只能在有限的范围内替换某些部件。在这种情况下，如果选择的云服务提供商不能提供足够合适的硬件，可能需要考虑其他提供商。
+
+如果你自己购买服务器，我强烈建议在进行深入研究后再做出购买决策。
+
+除了硬件之外，您还需要能够有效利用硬件的软件。
+
+我们将在本章及其他章节讨论硬件和软件方面的内容。您可以先阅读[这里](../../training/performance)和[这里](../../training/model-parallelism)的内容。
+
+
+
+## 加速器特性关注点
+
+让我们以NVIDIA A100的规格作为参考点来进行讨论。
 
 ![nvidia-a100-spec](images/nvidia-a100-spec.png)
 
-[source](https://www.nvidia.com/en-us/data-center/a100/)
+[来源](https://www.nvidia.com/en-us/data-center/a100/)
 
 ### TFLOPS
 
-As mentioned earlier most of the work that ML training and inference do is matrix multiplication. If you remember your algebra matrix multiplication is made of many multiplications followed by summation. Each of these computations can be counted and define how many of these operations can be performed by the chip in a single seconds.
+正如前面提到的，大多数ML训练和推理的工作都涉及矩阵乘法。简而言之，矩阵乘法是由一系列的乘法和加法组成的。每个这样的计算都可以计数并定义芯片每秒能执行的浮点运算数量。
 
-This is one of the key characteristics that the accelerators are judged by. The term TFLOPS defines how many trillions of FloatingPointOperations the chip can perform in a second. The more the better. There is a different definition for different data types. For example, here are a few entries from the theoretical peak TFLOPS from [A100 spec](https://www.nvidia.com/en-us/data-center/a100/):
+这是评估加速器的重要特征之一。TFLOPS表示芯片每秒钟可以执行多少万亿次的浮点运算。数值越大越好。根据数据的类型，有不同的定义。以下是来自A100规格的一些理论峰值TFLOPS值：
 
-| Data type \ TFLOPS     | w/o Sparsity | w/ Sparsity |
-| :--------------------  | -----------: | ----------: |
-| FP32                   |         19.5 |         n/a |
-| Tensor Float 32 (TF32) |          156 |         312 |
-| BFLOAT16 Tensor Core   |          312 |         624 |
-| FP16 Tensor Core       |          312 |         624 |
-| FP8 Tensor Core        |          624 |        1248 |
-| INT8 Tensor Core       |          624 |        1248 |
+| 数据类型\ TFLOPS     | 无稀疏 | 有稀疏 |
+| :------------------- | ------: | ------: |
+| FP32                 |   19.5  | n/a     |
+| Tensor Float 32 (TF32)|  156.0  |   312   |
+| BFLOAT16 Tensor Core |  312.0  |   624   |
+| FP16 Tensor Core     |  312.0  |   624   |
+| FP8 Tensor Core      |  624.0  |  1248   |
+| INT8 Tensor Core     |  624.0  |  1248   |
 
-Notes:
+注意：
 
-* INT8 is measured in TeraOperations as it's not a floating operation.
+* INT8由于不是浮点运算，所以它的TFLOPS是以Tera Operations的形式测量的。
 
-* the term FLOPS could mean either the total number of FloatingPointOperations, e.g. when counting how many FLOPS a single Transformer iteration takes, and it could also mean FloatingPointOperations per second - so watch out for the context. When you read an accelerator spec it's almost always a per second definition. When model architectures are discussed it's usually just the total number of FloatingPointOperations.
+* FLOPS这个术语既可以用来表示总的浮点运算次数（例如，当计算单个Transformer迭代所需要的FLOPS总量时），也可以用来表示每秒浮点运算次数——所以在不同上下文中需要注意区分。在查看加速器的规格时，它几乎总是指每秒的定义。而在讨论模型架构时，它通常只是代表总的浮点运算次数。
 
-So you can see that int8 is 2x faster than bf16 which in turn is 2x faster than tf32.
+因此，我们可以看到INT8的速度是BF16的两倍，而BF16又是TF32的两倍。
 
-Moreover, the TFLOPs depend on the matrices size as can be seen from this table:
-
-![nvidia-a100-matmul-tflops](images/nvidia-a100-matmul-tflops.png)
-
-[source](https://developer.nvidia.com/blog/cuda-11-features-revealed/)
-
-As you can see the difference in performance is non-linear due to [the tile and wave quantization effects](../../training/performance#tile-and-wave-quantization).
+此外，TFLOPS会随着矩阵大小的增加呈现出非线性增长，这是因为[Tile和Wave量化效应](../../training/performance#tile-and-wave-quantization)的影响。
 
 
-#### TFLOPS comparison table
+#### TFLOPS对比表格
 
-Let's look at the supported [dtypes](../../training/dtype.md) and the corresponding theoretical peak TFLOPS specs across the high end accelerators (w/o sparsity). Sorted by bf16.
+下面是一个基于不同数据类型的理论峰值TFLOPS值的对比表格，针对的是当前市场上的高端加速器（不包括稀疏模式）。按照bf16排序。
 
-| Accelerator \ TFLOPS |  fp32 | tf32  | fp16 | bf16 | fp8  | int8 |
-| :---------------     | ----: | ----: | ---: | ---: | ---: | ---: |
-| AMD MI300X           | 163.4 | 653.7 | 1300 | 1300 | 2600 | 2600 |
-| NVIDIA H100 SXM      |  67.0 | 494.5 |  989 |  989 | 1979 | 1979 |
-| NVIDIA H200 SXM      |  67.0 | 494.5 |  989 |  989 | 1979 | 1979 |
-| NVIDIA H100 PCIe     |  51.0 | 378.0 |  756 |  756 | 1513 | 1513 |
-| Intel Gaudi2         |     V |     V |    V |    V |    V |    V |
-| Google TPU v5p       |     X |     X |    X |  459 |    X |  918 |
-| AMD MI250X           |  47.9 |     X |  383 |  383 |    X |  383 |
-| NVIDIA L40S          |  91.6 | 183.0 |  362 |  362 |  733 |  733 |
-| AMD MI250            |  45.3 |     X |  362 |  362 |    X |  362 |
-| NVIDIA A100 SXM      |  19.5 | 156.0 |  312 |  312 |    X |  624 |
-| Google TPU v4        |     X |     X |    X |  275 |    X |    X |
-| Google TPU v5e       |     X |     X |    X |  197 |    X |  394 |
+| 加速器\ TFLOPS | fp32 | tf32 | fp16 | bf16 | fp8 | int8 |
+| :------------- | ---: | ---: | ---: | ---: | --: | ---: |
+| AMD MI300X     | 163.4 | 653.7 | 1300 | 1300 | 2600 | 2600 |
+| NVIDIA H100 SXM|  67.0 | 494.5 |  989 |  989 | 1979 | 1979 |
+| NVIDIA H200 SXM|  67.0 | 494.5 |  989 |  989 | 1979 | 1979 |
+| NVIDIA H100 PCIe|  51.0 | 378.0 |  756 |  756 | 1513 | 1513 |
+| Intel Gaudi2   | V     | V     | V     | V     | V    | V    |
+| Google TPU v5p | X     | X     | X     | 459   | X    | 918  |
+| AMD MI250X     |  47.9 | X     |  383 |  383 | X    |  383 |
+| NVIDIA L40S    |  91.6 | 183.0 |  362 |  362 |  733 |  733 |
+| AMD MI250      |  45.3 | X     |  362 |  362 | X    |  362 |
+| NVIDIA A100 SXM|  19.5 | 156.0 |  312 |  312 | X    |  624 |
+| Google TPU v4  | X     | X     | X     | 275   | X    | X    |
+| Google TPU v5e | X     | X     | X     | 197   | X    | 394  |
 
-Notes:
+注解：
 
-* int8 is measured in TeraOperations as it's not a floating operation.
+* int8的测量单位是Tera Operations，因为它不是一个浮点运算。
 
-* Intel Gaudi2 doesn't plan to publish TFLOPS specs as of this writing, but it does support FP32, TF32, BF16, FP16 & FP8, INT8 and INT16. This [blog posts](https://www.databricks.com/blog/llm-training-and-inference-intel-gaudi2-ai-accelerators) reports measuring ~400TFLOPS for fp16/bf16 - but, of course, this number can't be compared to theoretical peak so it doesn't belong to this table - guessing, it's probably in the 600-1000TFLOPS range.
+* Intel Gaudi2尚未公布其TFLOPS规格（截至本文写作时），但它确实支持FP32、TF32、BF16、FP16 & FP8、INT8和INT16。一篇[博客文章](https://www.databricks.com/blog/llm-training-and-inference-intel-gaudi2-ai-accelerators)报道了大约400TFLOPS的fp16/bf16混合精度模式的测试结果——但这只是一个粗略估计，因为官方并未正式公布这些数字。合理的猜测是它在600-1000TFLOPS的范围之内。
 
-* I didn't include `NVIDIA H100 dual NVL` as it's, well, 2x GPUs - so it won't be fair - it's the same FLOPS as H100 but 2x everything, plus at has a bit more memory (94GB per chip, as compared to 80GB H100) and the memory is a bit faster.
-
-* when looking at specs be very careful at which numbers you're reading - many vendors often publish TFLOPS with sparsity, as they are ~2x bigger, but if they even indicate this they often do it in small print. I had to ask NVIDIA to add a note to their H100 spec that those numbers were w/ sparsity as they originally didn't mention this important technical fact. And 99% of the time as of this writing you will be not using sparsity and thus the actual theoretical TFLOPs that you care for most of the time are w/o sparsity (i.e. the table above).
-
-* also beware that if accelerator A publishes a higher TFLOPS than accelerator B, it doesn't mean A is faster. These are theoretical numbers which not only can never be achieved in practice - the actual TFLOPS efficiency (HFU) can vary a lot from vendor to vendor or even for the same vendor's different accelerator architectures.
+* 如果某个加速器公布的TFLOPS高于另一款加速器，并不意味着前者就更快。这些是理论值，在实际应用中永远无法达到，实际的TFLOPS效率（HFU）因厂商和加速器架构的不同而有很大差异。
 
 
+#### 最大可达FLOPS
 
-#### Maximum Achievable FLOPS
+理论峰值FLOPS是加速器规格中公开的信息。它是这样计算的：
 
-Theoretical peak FLOPS is what gets published on the accelerator's spec. And it's calculated as:
+`理论FLOPS = 计算单元时钟频率 * 每个计算单元每周期执行的浮点操作数 * 计算单元的数量`
 
-`Theoretical FLOPS = compute_unit_clock_speed * flops_per_clock_cycle_per_compute_unit * num_compute_units`
+其中：
+- `计算单元时钟频率` – 计算单元每秒能产生多少个时钟脉冲（Hz）
+- `每个计算单元每周期执行的浮点操作数` – 计算单元能在每个时钟周期内执行多少个操作
+- `计算单元的数量` – 设备中有多少个计算单元
 
-where:
-- `compute_unit_clock_speed` - how many times the compute unit clock ticks per second in Hz
-- `flops_per_clock_cycle_per_compute_unit` - the number of operations the compute unit can execute per clock cycle.
-- `num_compute_units` - how many units there is in the device
+问题是，广告宣传的理论峰值FLOPS是非常理论化的，即使在理想条件下也无法实现。实际上，每个加速器都有自己的实际可达FLOPS，但这些信息不会公开，社区成员有时会在论坛上分享他们所能实现的最高FLOPS，但我还没有找到任何官方报告。
 
-The problem with the advertised theoretical peak FLOPS is that they are **very** theoretical and can't be achieved in practice even if all the perfect conditions have been provided. Each accelerator has its own realistic FLOPS which is not advertised and there are anecdotal community reports that do their best to find the actual best value, but I'm yet to find any official reports.
+为了提供一个具体的例子，A100的理论峰值BF16 FLOPS是312 TFLOPS。直到FlashAttention的出现，人们普遍认为150 TFLOPS是fp16/bf16混合精度的极限。有了FlashAttention，这个数字提高到了大约180 TFLOPS。这些都是针对LLM训练场景下的基准测试得到的，其中包括了网络和IO的开销，因此实际的峰值性能可能在200到300 TFLOPS之间。
 
-If you find solid reports (papers?) showing the actual TFLOPS one can expect from one or more of the high end accelerators discussed in this chapter please kindly submit a PR with this information. The key is to have a reference to a source that the reader can validate the proposed information with.
+理论上，应该有可能通过动态调整最大尺寸的矩阵相乘来精确找出实际的最大可达FLOPS。
 
-To provide a numerical sense to what I'm talking about is let's take A100 with its 312 TFLOPS bf16 peak performance in the specs of this card. Until the invent of FlashAttention it was known that 150TFLOPS was close to the highest one could get for fp16/bf16 mixed precision regime. And with FlashAttention it's around 180TFLOPS. This is, of course, measured for training LLMs where the network and IO are involved which create additional overheads. So here the maximum achievable peak performance probably lays somewhere between 200 and 300 TFLOPS.
-
-It should be possible to calculate the actual peak TFLOPS by doing a perfectly aligned max-size matrices `matmul` measured on a single accelerator.
-
-XXX: write a small program to do exactly dynamically figuring out the perfect shapes based on [the tile and wave quantization effects](https://docs.nvidia.com/deeplearning/performance/dl-performance-matrix-multiplication/index.html#dim-quantization) and max sizes (how?) so that the benchmark isn't hardcoded to a particular accelerator.
+XXX：编写一个小程序来动态发现完美对齐的最大尺寸矩阵相乘，并根据[Tile和Wave量化效应](https://docs.nvidia.com/deeplearning/performance/dl-performance-matrix-multiplication/index.html#dim-quantization)调整形状大小，以便基准测试不受硬编码限制。
 
 
-### Accelerator memory size and speed
+### 加速器内存容量和速度
 
-The accelerators use [High Bandwidth Memory](https://en.wikipedia.org/wiki/High_Bandwidth_Memory) (HBM) which is a 3D version of SDRAM memory. For example, A100-SXM comes with HBM2 at 1.6TBps, and H100-SXM comes with HBM3 at 3.35TBps.
+加速器使用[高带宽内存](https://zh.wikipedia.org/wiki/%E9%AB%98%E5%8F%AF%E9%9D%9E%E5%BA%A6%E5%86%85%E5%AD%98)（HBM），这是一种三维版的SDRAM内存。例如，A100-SXM配备了HBM2，传输速率为1.6 TBps，而H100-SXM则配备了更快的HBM3，传输速率达到了3.35 TBps。
 
-Here are the specs:
+以下是一些内存规格：
 
-| Gen | Data Rate<br> (Gbps) | Bandwidth per<br> Device (GBps) | Stack<br> Height |	Max. DRAM<br> Capacity (GB) | Max. Device<br> Capacity (GB) |
-| :---  | --: | ---:  | -: | -: | -: |
-| HBM   | 1.0 |   128 |  8 |  2 | 16 |
-| HBM2  | 2.0 |   256 |  8 |  2 | 16 |
-| HBM2e | 3.6 |   461 | 12 |  3 | 36 |
-| HBM3  | 6.4 |   819 | 16 |  4 | 64 |
-| HBM3e | 9.6 |  1229 | 16 |  4 | 64 |
+| 代数 | 数据速率(Gbps) | 每设备带宽(GBps) | 堆栈高度 | 最大DRAM容量(GB) | 最大设备容量(GB) |
+| :---: | -------------: | ---------------: | --------: | ---------------: | ---------------: |
+| HBM   |        1.0     |             128  |       8   |              2   |              16  |
+| HBM2  |        2.0     |             256  |       8   |              2   |              16  |
+| HBM2e |        3.6     |             461  |      12   |              3   |              36  |
+| HBM3  |        6.4     |             819  |      16   |              4   |              64  |
+| HBM3e |        9.6     |            1229  |      16   |              4   |              64  |
 
-Since HBM is a stack of multiple DRAM chips, the *Stack Height* specifies how many chips are per device.
+由于HBM是一种内存堆叠结构，堆栈高度决定了有多少个DRAM芯片组成一个设备。
 
-Typically the more on-device memory the accelerator has the better. At any given time usually most of the model weights aren't being used as they wait for their turn to be processed and thus large memory allows more of the model to be on the accelerator memory and immediately available for access and update. When there is not enough memory, sometimes the model has to be split across multiple accelerators, or offloaded to CPU and/or disk.
+一般来说，加速器拥有更多的本地内存是有益的。在任何给定时间内，大部分模型权重都不会同时被使用，而是等待轮换进行处理。因此，较大的内存允许更多模型参数驻留在加速器内存中，随时可供访问和更新。当内存不足时，模型可能不得不分割到多个加速器上，或者卸载到CPU和/或磁盘上。
 
-Here are the memory specs for the recent high end accelerators (some aren't GA yet), sorted by memory size:
+以下是近期高端加速器的内存规格对比，按内存容量降序排列：
 
-| Accelerator          |  Memory<br> (GBs) | Type  | Bandwidth<br> (TBps) |
-| :------------------- | ----------------: | :---- | -------------------: |
-| AMD MI300X           |               192 | HBM3  |                 5.30 |
-| NVIDIA GH200 SXM (2) |               141 | HBM3e |                 4.80 |
-| NVIDIA H200 SXM      |               141 | HBM3e |                 4.80 |
-| AMD MI250            |               128 | HBM2e |                 3.28 |
-| AMD MI250X           |               128 | HBM2e |                 3.28 |
-| NVIDIA GH200 SXM (1) |                96 | HBM3  |                 4.00 |
-| Intel Gaudi2         |                96 | HBM2e |                 2.45 |
-| Google TPU v5p       |                95 | HBM2e |                 4.80 |
-| NVIDIA H100 SXM      |                80 | HBM3  |                 3.35 |
-| NVIDIA A100 SXM      |                80 | HBM2e |                 2.00 |
-| NVIDIA H100 PCIe     |                80 | HBM3  |                 2.00 |
-| NVIDIA L40S          |                48 | GDDR6 |                 0.86 |
-| Google TPU v4        |                32 | HBM2  |                 2.40 |
-| Google TPU v5e       |                16 | HBM2  |                 1.60 |
+| 加速器          | 内存(GBs) | 类型  | 带宽(TBps) |
+| :-------------- | --------: | :---- | ---------: |
+| AMD MI300X      |       192 | HBM3  |       5.30 |
+| NVIDIA GH200 SXM (2) |       141 | HBM3e |       4.80 |
+| NVIDIA H200 SXM |       141 | HBM3e |       4.80 |
+| AMD MI250        |       128 | HBM2e |       3.28 |
+| AMD MI250X       |       128 | HBM2e |       3.28 |
+| NVIDIA GH200 SXM (1) |        96 | HBM3  |       4.00 |
+| Intel Gaudi2    |        96 | HBM2e |       2.45 |
+| Google TPU v5p  |        95 | HBM2e |       4.80 |
+| NVIDIA H100 SXM |        80 | HBM3  |       3.35 |
+| NVIDIA A100 SXM |        80 | HBM2e |       2.00 |
+| NVIDIA H100 PCIe |        80 | HBM3  |       3.35 |
+| NVIDIA L40S     |        48 | GDDR6 |       0.86 |
+| Google TPU v4   |        32 | HBM2  |       2.40 |
+| Google TPU v5e  |        16 | HBM2  |       1.60 |
 
-Notes:
+注解：
 
-* I didn't include `NVIDIA H100 dual NVL` as it's 2x H100 GPUs with 14GB memory extra per chip and slightly faster memory (3.9TBps vs 3.35TBps) - but it would have an unfair advantage in the above table as everything else is per-chip. (I guess AMD250 is also 2 GCDs, but they aren't very competitive anyway and will soon be displaced from this table by newer offerings)
+* 我未将“NVIDIA H100双NVL”纳入比较，因为它相当于两个GPU，因此在上述表格中会有不公平的优势（尽管它实际上是两个独立的GPU）。
 
-Memory speed (bandwidth) is, of course, very important since if it's not fast enough than the compute ends up idling waiting for the data to be moved to and from the memory.
+内存速度（带宽）也非常重要，因为如果不够快，计算单元就会闲置等待数据传输，从而降低整体性能（严重情况下甚至可能导致系统崩溃，尽管设计上应避免这种情况发生）。
 
 
 
 
-### Heat
+### 热量
 
-This is of interest when you buy your own hardware, when you rent on the cloud the provider hopefully takes care of adequate cooling.
+这对于自行采购硬件的人来说尤为重要，而对于那些在云上租用资源的用户来说，云服务商会负责保持适当的冷却措施。
 
-The only important practical understanding for heat is that if the accelerators aren't kept cool they will throttle their compute clock and slow everything down (and could even crash sometimes, albeit throttling is supposed to prevent that).
-
-
+加速器产生的热量是一个值得关注的因素，因为如果散热不当，它们会降低运行频率以减少发热（极端情况下甚至会关机，尽管设计上应尽量避免这种情况）。
 
 
-## High end accelerators for LLM/VLM workloads
 
-### Cloud and on-premises  accelerator clusters
- accelerators
 
-Most common accelerators that can be either rented on compute clouds or purchased:
+## 大型语言模型/视觉模型工作负载的高端加速器
 
-NVIDIA:
-- [H100](https://www.nvidia.com/en-us/data-center/h100) - 2-3x faster than A100 (half precision), 6x faster for fp8, has been available on all Tier-1 compute clouds since Q4-2023.
-- [GH200](https://www.nvidia.com/en-us/data-center/grace-hopper-superchip/) - 2 chips on one card - (1) H100 w/ 96GB HBM3 or 144GB HBM3e + (2) Grace CPU w/ 624GB RAM - first units have been reported to become available. Do not confuse with H200, which is a different card.
-- [L40S](https://www.nvidia.com/en-us/data-center/l40s/) - a powerful card that is supposed to be more than 2x cheaper than H100, and it's more powerful than A100.
-- [H200](https://www.nvidia.com/en-us/data-center/h200/) - mainly the same as H100, but with more and faster memory! Supposed to become available some time mid-2024.
-- [A100](https://www.nvidia.com/en-us/data-center/a100/#specifications) - huge availability, but already getting outdated. But given the much lower cost than H100 this is still a great GPU.
+### 云计算和本地部署的加速器集群
 
-AMD:
-- [MI250](https://www.amd.com/en/products/accelerators/instinct/mi200/mi250.html) ~= A100 - very few clouds have them
-- [MI300X](https://www.amd.com/en/products/accelerators/instinct/mi300/mi300x.html) ~= H100 - just starting to emerge - and mainly on Tier-2 clouds (lots of new startups).
+大多数常见的高端加速器既可以作为云服务租用，也可以直接购买：
 
-Intel:
-- [Gaudi2](https://habana.ai/products/gaudi2/) ~= H100 - [spec](https://docs.habana.ai/en/latest/Gaudi_Overview/Gaudi_Architecture.html) - [Currently there is a very low availability on cloud.google.com](https://cloud.google.com) with a long waiting list which supposedly should be reduced in Q1-2024. AWS has the older Gaudi1 via [DL1 instances](https://aws.amazon.com/ec2/instance-types/dl1/). It's also available on-premises implementations via Supermicro and WiWynn.
+NVIDIA：
+- [H100](https://www.nvidia.com/en-us/data-center/h100) – 比A100快2-3倍（半精度下），fp8下快6倍。自2023年第四季度以来已在所有一级计算云上可用。
+- [GH200](https://www.nvidia.com/en-us/data-center/grace-hopper-superchip/) – 两个芯片集成在一块卡上：（1）H100带有96 GB HBM3或144 GB HBM3e + （2）Grace CPU带有624 GB RAM。首批产品已开始交付。不要将其与H200混淆，后者是完全不同的卡。
+- [L40S](https://www.nvidia.com/en-us/data-center/l40s/) – 一种功能强大的新卡，据称价格不到H100的一半，并且在某些方面比A100还要强大。预计将于2024年中旬左右上市。
+- [H200](https://www.nvidia.com/en-us/data-center/h200/) – 与H100基本相同，但具有更大、更快的内存！预计将于2024年中旬左右上市。
+- [A100](https://www.nvidia.com/en-us/data-center/a100/#specifications) – 供货充足，但逐渐过时。尽管成本较低，它仍然是很好的选择。
 
-Graphcore:
-- [IPU](https://www.graphcore.ai/products/ipu) - available via [Paperspace](https://www.paperspace.com/graphcore). the latest product MK2 (C600) has only 0.9GB SRAM per card, so it's not clear how this card can do anything ML-wise - even inference of a small model won't fit its model weights - but there is something new at works at Graphcore, which I'm told we should discover soon. Here is is a good explanation [of how IPU works](https://thytu.com/posts/ipus-101/).
+AMD：
+- [MI250](https://www.amd.com/en/products/accelerators/instinct/mi200/mi250.html) ~= A100 – 在少数云上有售
+- [MI300X](https://www.amd.com/en/products/accelerators/instinct/mi300/mi300x.html) ~= H100 – 刚刚崭露头角，主要见于二级云服务（很多新的初创企业）。
 
-SambaNova:
+Intel：
+- [Gaudi2](https://habana.ai/products/gaudi2/) ~= H100 – [规范](https://docs.habana.ai/en/latest/Gaudi_Overview/Gaudi_Architecture.html) – [目前，在云.google.com上仅有少量可用，且有一长串等候名单，据说有望在2024年第一季度减少](https://cloud.google.com)。AWS上有较旧的Gaudi1版本[通过DL1实例](https://aws.amazon.com/ec2/instance-types/dl1/)提供。它还可在超大规模数据中心的内置环境中通过Supermicro和WiWynn等公司提供。
+
+Graphcore：
+- [IPU](https://www.graphcore.ai/products/ipu) – 可通过[Paperspace](https://www.paperspace.com/graphcore)提供。最新产品MK2（C600）仅有0.9GB SRAM per card，因此尚不清楚如何用于任何ML任务——即使是小模型的推理也不太可能完全适合其模型权重。不过，Graphcore似乎有一些即将到来的新技术，据我所知，我们应该很快就能了解更多信息。这里是对IPU工作的良好解释[《IPUS 101》](https://thytu.com/posts/ipus-101/)。
+
+SambaNova：
 - [DataScale SN30](https://sambanova.ai/products/datascale/)
 
 
-### On-premises accelerator clusters
+### 本地部署加速器集群
 
-Cerebras:
-- [clusters](https://www.cerebras.net/product-cluster/)
-- [systems](https://www.cerebras.net/product-system/)
-based on WaferScale Engine (WSE).
+Cerebras：
+- [集群](https://www.cerebras.net/product-cluster/)
+- [系统](https://www.cerebras.net/product-system/)
+基于WaferScale Engine（WSE）构建。
 
 
 
 
-### Cloud-only solutions
+### 仅云服务的解决方案
 
-These can be only used via clouds:
+这些只能在云上使用：
 
-Google
-- [TPUs](https://cloud.google.com/tpu), [specs])(https://cloud.google.com/tpu/docs/system-architecture-tpu-vm) - lock-in, can't switch to another vendor like NVIDIA -> AMD
+Google：
+- [TPUs](https://cloud.google.com/tpu)，[规范](https://cloud.google.com/tpu/docs/system-architecture-tpu-vm) – 锁定，一旦采用很难切换到其他供应商（如NVIDIA->AMD）。
 
-Cerebras:
-- [Cloud](https://www.cerebras.net/product-cloud/)
+Cerebras：
+- [云服务](https://www.cerebras.net/product-cloud/)
 
 
 
-### How to get the best price
 
-Remember that the advertised prices are almost always open to negotiations as long as you're willing to buy/rent in bulk or if renting for a 1-3 years. What you will discover is that the actual price that you end up paying could be many times less than the advertised "public" price. Some cloud providers already include the discount as you choose a longer commitment on their website, but it's always the best to negotiate directly with their sales team. In addition or instead of a $$-discount you could be offered some useful features/upgrades for free.
+### 获取最佳价格的方法
 
-If your company has venture capital investors - it could help a lot to mention that, as then the cloud provider knows you are likely to buy more compute down the road and more likely to discount more.
+请记住，广告标价通常是谈判后的价格基础，只要您愿意批量购买或在1-3年内签订长期合同。实际上，您最终支付的价格可能是广告标价的许多倍。一些云服务提供商已经在他们的网站上包含了折扣，但如果您直接与销售团队协商，可能会得到更好的价格或其他优惠条件。此外，如果贵公司的背后有风险资本投资者，提及这一点可能会有帮助，因为这表明您在未来可能会购买更多的计算资源，从而增加了进一步降价的可能性。
 
-Tier 2 clouds are likely to give better prices than Tier 1. Tier 1 as of this writing is AWS, OCI, Azure and GCP.
+一级云服务提供商的定价往往较高，因此可以考虑转向二级云服务提供商寻求更有竞争力的价格。一级云服务提供商包括AWS、OCI、Azure和GCP。
 
-For the baseline prices it should be easy to find a few good sites that provide an up-to-date public price comparisons across clouds - just search for something like [cloud gpu pricing comparison](https://www.google.com/search?q=cloud+gpu+pricing+comparison).
-
-When shopping for a solution please remember that it's not enough to rent the most powerful accelerator. You also need fast [intra-node](../../network#intra-node-networking) and [inter-node](../../network#inter-node-networking) connectivity and sufficiently fast [storage](../../storage) - without which the expensive accelerators will idle waiting for data to arrive and you could be wasting a lot money and losing time.
-
-
-
-## Accelerators in detail
-
-### NVIDIA
-
-Abbreviations:
-
-- CUDA: Compute Unified Device Architecture (proprietary to NVIDIA)
-
-NVIDIA-specific key GPU characteristics:
-- CUDA Cores - similar to CPU cores, but unlike CPUs that typically have 10-100 powerful cores, CUDA Cores are weaker and come in thousands and allow to perform massive general purpose computations (parallelization). Like CPU cores CUDA Cores perform a single operation in each clock cycle.
-- Tensor Cores - special compute units that are designed specifically to perform fast multiplication and addition operations like matrix multiplication. These perform multiple operations in each clock cycle. They can execute extremely fast computations on low or mixed precision data types with some loss (fp16, bf16, tf32, fp8, etc.). These cores are specifically designed for ML workloads.
-- Streaming Multiprocessors (SM) are clusters of CUDA Cores, Tensor Cores and other components.
-
-For example, A100-80GB has:
-
-- 6912 CUDA Cores
-- 432 Tensor Cores (Gen 3)
-- 108 Streaming Multiprocessors (SM)
-
-
-
-
-
-### AMD
-
-AMD-specific key GPU characteristics:
-- Stream Processors - are similar in functionality to CUDA Cores - that is these are the parallel computation units. But they aren't the same, so one can't compare 2 gpus by just comparing the number of CUDA Cores vs the number of Stream Processors.
-- Compute Units - are clusters of Stream Processors and other components
-
-for example, AMD MI250 has:
-- 13,312 Stream Processors
-- 208 Compute Units
-
-
-### Intel Gaudi2
-
-[Architecture](https://docs.habana.ai/en/latest/Gaudi_Overview/Gaudi_Architecture.html)
-
-- 24x 100 Gigabit Ethernet (RoCEv2) integrated on chip - 21 of which are used for intra-node and 3 for inter-node (so `21*8=168` cards for intra-node (262.5GBps per GPU), and `3*8=24` cards for inter-node (2.4Tbps between nodes)
-- 96GB HBM2E memory on board w/2.45 TBps bandwidth per chip, for a total of 768GB per node
-
-A server/node is built from 8 GPUs, which can then be expanded with racks of those servers.
-
-There are no official TFLOPS information published (and from talking to an Intel representative they have no intention to publish any.) They publish the [following benchmarks](https://developer.habana.ai/resources/habana-models-performance/ but I'm not sure how these can be used to compare this compute to other providers.
-
-Comparison: supposedly Gaudi2 competes with NVIDIA H100
-
-
-
-
-
-## API
-
-Which software is needed to deploy the high end GPUs?
-
-
-### NVIDIA
-
-NVIDIA GPUs run on [CUDA](https://developer.nvidia.com/cuda-toolkit)
-
-### AMD
-
-AMD GPUs run on [ROCm](https://www.amd.com/en/products/software/rocm.html) - note that PyTorch you can use CUDA-based software on ROCm-based GPUs! So it should be trivial to switch to the recent AMD MI250, MI300X, and other emerging ones.
-
-### Intel Gaudi
-
-The API is via [Habana SynapseAI® SDK](https://habana.ai/training-software/) which supports PyTorch and TensorFlow.
-
-Useful integrations:
-- [HF Optimum Habana](https://github.com/huggingface/optimum-habana) which also includes - [DeepSpeed](https://github.com/microsoft/DeepSpeed) integration.
-
-
-
-
-
-
-
-## Apples-to-apples Comparison
-
-It's very difficult to compare specs of different offerings since marketing tricks get deployed pretty much by all competitors so that one can't compare 2 sets of specs and know the actual difference.
-
-- [MLPerf via MLCommons](https://mlcommons.org/en/) publishes various hardware benchmarks that measure training, inference, storage and other tasks' performance. For example, here is the most recent as of this writing [training v3.0](https://mlcommons.org/en/training-normal-30/) and [inference v3.1](https://mlcommons.org/en/inference-datacenter-31/) results.
-
-   Except I have no idea how to make use of it - it's close to impossible to make sense of or control the view. This is a great intention lost in over-engineering and not thinking about how the user will benefit from it, IMHO. For example, I don't care about CV data, I only want to quickly see the LLM rows, but I can't do it. And then the comparisons are still not apples to apples so how can you possibly make sense of which hardware is better I don't know.
-
-
-
-## Power and Cooling
-
-It is most likely that you're renting your accelerator nodes and someone else is responsible for ensuring they function properly, but if you own the accelerators you do need to know how to supply a sufficient power and adequate cooling.
-
-
-### Power
-
-Some high end consumer GPU cards have 2 and sometimes 3 PCI-E 8-Pin power sockets. Make sure you have as many independent 12V PCI-E 8-Pin cables plugged into the card as there are sockets. Do not use the 2 splits at one end of the same cable (also known as pigtail cable). That is if you have 2 sockets on the GPU, you want 2 PCI-E 8-Pin cables going from your PSU to the card and not one that has 2 PCI-E 8-Pin connectors at the end! You won't get the full performance out of your card otherwise.
-
-Each PCI-E 8-Pin power cable needs to be plugged into a 12V rail on the PSU side and can supply up to 150W of power.
-
-Some other cards may use a PCI-E 12-Pin connectors, and these can deliver up to 500-600W of power.
-
-Low end cards may use 6-Pin connectors, which supply up to 75W of power.
-
-Additionally you want the high-end PSU that has stable voltage. Some lower quality ones may not give the card the stable voltage it needs to function at its peak.
-
-And of course the PSU needs to have enough unused Watts to power the card.
-
-
-
-### Cooling
-
-When a GPU gets overheated it will start throttling down and will not deliver full performance and it can even shutdown if it gets too hot.
-
-It's hard to tell the exact best temperature to strive for when a GPU is heavily loaded, but probably anything under +80C is good, but lower is better - perhaps 70-75C is an excellent range to be in. The throttling down is likely to start at around 84-90C. But other than throttling performance a prolonged very high temperature is likely to reduce the lifespan of a GPU.
+在寻找解决方案时，请记得不仅要看加速器的性能，还要看其配套的基础设施，比如高速[节点间网络](../../network#inter-node-networking)和[存储系统](../../storage)。如果没有这些基础设施的支持，昂贵的加速器可能会空闲等待数据到达，从而浪费资金和时间。

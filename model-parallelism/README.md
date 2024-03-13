@@ -1,3 +1,1 @@
-## Moved
-
-**Moved to [here](../training/model-parallelism/).**
+已移动至[此处](../training/model-parallelism/)。
